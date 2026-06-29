@@ -1,0 +1,39 @@
+name: macOS Build & Test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-test:
+    name: Build and Test
+    # The app targets macOS 14, but the source uses the Xcode 26 toolchain
+    # (SwiftUI / SDK). macos-26 ships Xcode 26; `macos-latest` may still
+    # alias an older Xcode, so we pin.
+    runs-on: macos-26
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: xcodebuild -version
+
+      - name: Build & test
+        run: |
+          xcodebuild test \
+            -project md.xcodeproj \
+            -scheme md \
+            -destination 'platform=macOS' \
+            -resultBundlePath build/TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TestResults
+          path: build/TestResults.xcresult
+          retention-days: 7
