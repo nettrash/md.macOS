@@ -6,13 +6,25 @@
         Native macOS App Sandbox. A document editor needs to read and write
         the files the user picks (open / save panel, drag-and-drop, the
         document browser) — the user-selected read-write scope grants
-        exactly that and nothing more. No network, hardware, or other
-        capabilities are requested: the app makes no network connections and
-        stores documents only where the user puts them.
+        exactly that and nothing more.
     -->
     <key>com.apple.security.app-sandbox</key>
     <true/>
     <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+
+    <!--
+        Required ONLY so the WKWebView used to render Print / Share-PDF can
+        launch. Under the App Sandbox, WKWebView's out-of-process WebContent
+        helper refuses to start without the network-client entitlement and
+        crashes on launch ("Application does not have permission to
+        communicate with network resources", errno 34) — even though the
+        document HTML is fully self-contained (inline CSS, system fonts, no
+        remote resources, baseURL: nil). This is a launch prerequisite of
+        WebKit's process model, not a feature: the app still makes no network
+        connections of its own and sends no data anywhere.
+    -->
+    <key>com.apple.security.network.client</key>
     <true/>
 </dict>
 </plist>

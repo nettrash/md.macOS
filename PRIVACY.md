@@ -33,11 +33,18 @@ leaves your Mac and contains no personal information.
 
 ## Permissions
 
-md requests no special permissions — no camera, microphone, contacts,
-location, or network access. The app runs in the macOS **App Sandbox** and
-requests only user-selected file access
+md requests no special permissions — no camera, microphone, contacts, or
+location. The app runs in the macOS **App Sandbox** and requests only
+user-selected file access
 (`com.apple.security.files.user-selected.read-write`): it can read and
 write the documents you explicitly open or save, and nothing else.
+
+The sandbox also carries the network-client entitlement
+(`com.apple.security.network.client`). This is required purely so the
+built-in web renderer that produces the Print / PDF output can start —
+macOS will not launch it inside the sandbox otherwise. md still makes **no
+network connections of its own** and sends no data anywhere; the rendered
+document is built entirely on your Mac from self-contained content.
 
 ## Children's privacy
 
