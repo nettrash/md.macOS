@@ -38,12 +38,27 @@ final class WebRenderer: NSObject, WKNavigationDelegate {
     static let pageSize = CGSize(width: 595, height: 842)
 
     private let webView: WKWebView
+    // createPDF() captures the web view's current rendering — that rendering
+    // only exists once the view is backed by a live window. Park the web view
+    // in an off-screen, non-activating panel for the duration of the render.
+    private let hostPanel: NSPanel
     private var onReady: ((Result<Void, Error>) -> Void)?
 
     override init() {
         let configuration = WKWebViewConfiguration()
-        webView = WKWebView(frame: CGRect(origin: .zero, size: WebRenderer.pageSize),
-                            configuration: configuration)
+        let wv = WKWebView(frame: CGRect(origin: .zero, size: WebRenderer.pageSize),
+                           configuration: configuration)
+        webView = wv
+        let panel = NSPanel(
+            contentRect: NSRect(x: -WebRenderer.pageSize.width - 100, y: 0,
+                                width: WebRenderer.pageSize.width,
+                                height: WebRenderer.pageSize.height),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered, defer: false)
+        panel.isReleasedWhenClosed = false
+        panel.contentView = wv
+        panel.orderBack(nil)
+        hostPanel = panel
         super.init()
         webView.navigationDelegate = self
     }
@@ -131,7 +146,11 @@ enum DocumentExport {
             try data.write(to: url, options: .atomic)
             presentShare(items: [url])
         } catch {
-            // Couldn't produce the PDF; leave the UI untouched.
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "Could not generate PDF"
+            alert.informativeText = error.localizedDescription
+            alert.runModal()
         }
         withExtendedLifetime(renderer) {}
     }
