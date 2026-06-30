@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+        Native macOS App Sandbox. A document editor needs to read and write
+        the files the user picks (open / save panel, drag-and-drop, the
+        document browser) — the user-selected read-write scope grants
+        exactly that and nothing more. No network, hardware, or other
+        capabilities are requested: the app makes no network connections and
+        stores documents only where the user puts them.
+    -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+</dict>
+</plist>
