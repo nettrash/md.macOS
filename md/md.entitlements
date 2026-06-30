@@ -26,5 +26,16 @@
     -->
     <key>com.apple.security.network.client</key>
     <true/>
+
+    <!--
+        Required so File ▸ Print… (⌘P) and Share ▸ Print can actually run.
+        Under the App Sandbox the print panel still appears, but its "Print"
+        button is disabled unless the app holds this entitlement, so
+        NSPrintOperation.run() can never start the job. Granting it is the
+        sandbox equivalent of Xcode's "Printing" capability — the app prints
+        the user's own document and nothing more.
+    -->
+    <key>com.apple.security.print</key>
+    <true/>
 </dict>
 </plist>
