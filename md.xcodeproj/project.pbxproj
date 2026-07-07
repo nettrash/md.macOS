@@ -16,9 +16,12 @@
 		D000000000000000000020A7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D000000000000000000010A7 /* Assets.xcassets */; };
 		D000000000000000000020A8 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D000000000000000000010A8 /* Preview Assets.xcassets */; };
 		D000000000000000000020AB /* mdTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D000000000000000000010AB /* mdTests.swift */; };
+		D0000000000000000000F202 /* RichRenderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000000000000000000F201 /* RichRenderTests.swift */; };
 		D000000000000000000020AC /* TypewriterTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = D000000000000000000010AC /* TypewriterTheme.swift */; };
 		D000000000000000000020AD /* MarkdownEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D000000000000000000010AD /* MarkdownEditor.swift */; };
 		D000000000000000000020AE /* MarkdownHTML.swift in Sources */ = {isa = PBXBuildFile; fileRef = D000000000000000000010AE /* MarkdownHTML.swift */; };
+		D0000000000000000000F102 /* MarkdownWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000000000000000000F101 /* MarkdownWebView.swift */; };
+		D0000000000000000000F111 /* rich in Resources */ = {isa = PBXBuildFile; fileRef = D0000000000000000000F110 /* rich */; };
 		D000000000000000000020AF /* DocumentExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D000000000000000000010AF /* DocumentExport.swift */; };
 /* End PBXBuildFile section */
 
@@ -44,9 +47,12 @@
 		D000000000000000000010A9 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		D000000000000000000010AA /* md.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = md.entitlements; sourceTree = "<group>"; };
 		D000000000000000000010AB /* mdTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = mdTests.swift; sourceTree = "<group>"; };
+		D0000000000000000000F201 /* RichRenderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichRenderTests.swift; sourceTree = "<group>"; };
 		D000000000000000000010AC /* TypewriterTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypewriterTheme.swift; sourceTree = "<group>"; };
 		D000000000000000000010AD /* MarkdownEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownEditor.swift; sourceTree = "<group>"; };
 		D000000000000000000010AE /* MarkdownHTML.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownHTML.swift; sourceTree = "<group>"; };
+		D0000000000000000000F101 /* MarkdownWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownWebView.swift; sourceTree = "<group>"; };
+		D0000000000000000000F110 /* rich */ = {isa = PBXFileReference; lastKnownFileType = folder; path = rich; sourceTree = "<group>"; };
 		D000000000000000000010AF /* DocumentExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentExport.swift; sourceTree = "<group>"; };
 		D0000000000000000000A002 /* md.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = md.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D0000000000000000000A004 /* mdTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = mdTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -99,8 +105,10 @@
 				D000000000000000000010A4 /* MarkdownInline.swift */,
 				D000000000000000000010A5 /* MarkdownView.swift */,
 				D000000000000000000010AE /* MarkdownHTML.swift */,
+				D0000000000000000000F101 /* MarkdownWebView.swift */,
 				D000000000000000000010AF /* DocumentExport.swift */,
 				D000000000000000000010AC /* TypewriterTheme.swift */,
+				D0000000000000000000F110 /* rich */,
 				D000000000000000000010A7 /* Assets.xcassets */,
 				D000000000000000000010A9 /* Info.plist */,
 				D000000000000000000010AA /* md.entitlements */,
@@ -121,6 +129,7 @@
 			isa = PBXGroup;
 			children = (
 				D000000000000000000010AB /* mdTests.swift */,
+				D0000000000000000000F201 /* RichRenderTests.swift */,
 			);
 			path = mdTests;
 			sourceTree = "<group>";
@@ -208,6 +217,7 @@
 			files = (
 				D000000000000000000020A8 /* Preview Assets.xcassets in Resources */,
 				D000000000000000000020A7 /* Assets.xcassets in Resources */,
+				D0000000000000000000F111 /* rich in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -232,6 +242,7 @@
 				D000000000000000000020A4 /* MarkdownInline.swift in Sources */,
 				D000000000000000000020A5 /* MarkdownView.swift in Sources */,
 				D000000000000000000020AE /* MarkdownHTML.swift in Sources */,
+				D0000000000000000000F102 /* MarkdownWebView.swift in Sources */,
 				D000000000000000000020AF /* DocumentExport.swift in Sources */,
 				D000000000000000000020AC /* TypewriterTheme.swift in Sources */,
 				D000000000000000000020A1 /* mdApp.swift in Sources */,
@@ -243,6 +254,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D000000000000000000020AB /* mdTests.swift in Sources */,
+				D0000000000000000000F202 /* RichRenderTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -390,7 +402,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 26;
 				DEVELOPMENT_ASSET_PATHS = "\"md/Preview Content\"";
 				DEVELOPMENT_TEAM = V4WM2SJ8Q9;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -404,7 +416,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = me.nettrash.md;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -422,7 +434,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 26;
 				DEVELOPMENT_ASSET_PATHS = "\"md/Preview Content\"";
 				DEVELOPMENT_TEAM = V4WM2SJ8Q9;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -436,7 +448,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = me.nettrash.md;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -450,7 +462,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 26;
 				DEVELOPMENT_TEAM = V4WM2SJ8Q9;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -459,7 +471,7 @@
 					"@loader_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = me.nettrash.mdTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -473,7 +485,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 26;
 				DEVELOPMENT_TEAM = V4WM2SJ8Q9;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -482,7 +494,7 @@
 					"@loader_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = me.nettrash.mdTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
