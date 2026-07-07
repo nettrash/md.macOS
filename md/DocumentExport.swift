@@ -38,6 +38,7 @@ final class WebRenderer: NSObject, WKNavigationDelegate {
     static let pageSize = CGSize(width: 595, height: 842)
 
     private let webView: WKWebView
+    private let assets: MdAssetSchemeHandler
     // createPDF() captures the web view's current rendering — that rendering
     // only exists once the view is backed by a live window. Park the web view
     // in an off-screen, non-activating panel for the duration of the render.
@@ -45,7 +46,10 @@ final class WebRenderer: NSObject, WKNavigationDelegate {
     private var onReady: ((Result<Void, Error>) -> Void)?
 
     override init() {
+        let handler = MdAssetSchemeHandler()
+        assets = handler
         let configuration = WKWebViewConfiguration()
+        configuration.setURLSchemeHandler(handler, forURLScheme: MdAssetSchemeHandler.scheme)
         let wv = WKWebView(frame: CGRect(origin: .zero, size: WebRenderer.pageSize),
                            configuration: configuration)
         webView = wv
@@ -63,11 +67,15 @@ final class WebRenderer: NSObject, WKNavigationDelegate {
         webView.navigationDelegate = self
     }
 
-    /// Load `html` and resume when the web view reports the load finished.
+    /// Load `html` and resume once the rich renderers (math / diagrams) have
+    /// finished — signalled by `data-md-render-complete` from md-init.js — so
+    /// the captured PDF / print output includes them rather than the raw source.
+    /// Served through the asset scheme handler so those bundled engines resolve.
     func load(html: String) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             onReady = { continuation.resume(with: $0) }
-            webView.loadHTMLString(html, baseURL: nil)
+            assets.html = html
+            webView.load(URLRequest(url: MdAssetSchemeHandler.indexURL))
         }
     }
 
@@ -86,7 +94,26 @@ final class WebRenderer: NSObject, WKNavigationDelegate {
 
     // WKNavigationDelegate
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        onReady?(.success(())); onReady = nil
+        waitForRenderComplete()
+    }
+
+    /// Poll until md-init.js flags the document fully rendered (or give up after
+    /// a generous cap — Graphviz-backed PlantUML diagrams are slow). Plain docs
+    /// and math/Mermaid settle almost immediately.
+    private func waitForRenderComplete(attempt: Int = 0) {
+        // PlantUML renders sequentially, up to ~20s per Graphviz diagram, so a
+        // document with several slow diagrams needs a generous cap.
+        let maxAttempts = 480 // ~120s at 0.25s each
+        webView.evaluateJavaScript("document.documentElement.getAttribute('data-md-render-complete')") { [weak self] value, _ in
+            guard let self else { return }
+            if (value as? String) == "1" || attempt >= maxAttempts {
+                self.onReady?(.success(())); self.onReady = nil
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+                    self?.waitForRenderComplete(attempt: attempt + 1)
+                }
+            }
+        }
     }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         onReady?(.failure(error)); onReady = nil
