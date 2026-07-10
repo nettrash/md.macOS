@@ -200,11 +200,11 @@ ___
 
 Inline image (may not render if the renderer is text-only):
 
-![Alt text for an image](https://nettrash.me/favicon.ico "Optional title")
+![Alt text for an image](https://nettrash.me/favicon-192x192.png "Optional title")
 
 A linked image:
 
-[![Alt text](https://nettrash.me/favicon.ico)](https://nettrash.me)
+[![Alt text](https://nettrash.me/md-icon.png)](https://nettrash.me)
 
 ---
 
