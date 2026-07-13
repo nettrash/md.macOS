@@ -8,14 +8,12 @@
 //  document's output paths. The macOS (AppKit) sibling of the iOS export file.
 //
 //  Rendering goes through an offscreen `WKWebView` rather than printing the
-//  text view directly. WebKit honors the full typewriter CSS, including the
-//  paper background, in both the PDF and the printed page — the chosen
-//  theme (and dark mode's cream-on-carbon ink) survives. The CSS sets
-//  `print-color-adjust: exact` so those backgrounds actually render.
-//
-//  Shared / exported PDFs honor the app-wide PDF Layout setting (see
-//  `PDFLayout`): content-tall pages by default, or real A4 pages produced
-//  by pointing the same print pipeline at a PDF file.
+//  text view directly, so WebKit lays the page out with the full document
+//  CSS. Print and PDF both come out as real A4 pages — WebKit paginates
+//  line-aware (nothing sliced at a fold) and honors `break-after: page`,
+//  so the author's `\newpage` markers cut pages. The pages are plain
+//  white with the light ink regardless of the window's appearance: paper
+//  tint and dark mode are screen themes (see `MarkdownHTML.css`).
 //
 //  A book can also leave as an EPUB 3 (see `EPUBExport` at the bottom):
 //  one XHTML file per title page / chapter heading / article, a nav TOC,
@@ -39,11 +37,6 @@ import AppKit
 import PDFKit
 import UniformTypeIdentifiers
 import WebKit
-
-/// The per-section PDFs failed to assemble into one document.
-private struct PDFAssemblyError: LocalizedError {
-    var errorDescription: String? { "The PDF pages could not be assembled." }
-}
 
 /// The print-pipeline A4 pagination did not produce a PDF.
 private struct PDFPaginationError: LocalizedError {
@@ -70,45 +63,14 @@ private final class PrintCompletion: NSObject {
     }
 }
 
-/// How shared / exported PDFs are laid out — the app-wide "PDF Layout"
-/// setting (in the File menu and the share toolbar menu, stored once for
-/// the whole app): content-tall pages with no line sliced by a cut (the
-/// default, `WebRenderer.makePDF`), or real A4 pages paginated by the
-/// print pipeline (`WebRenderer.makeA4PDF`).
-enum PDFLayout: String, CaseIterable, Identifiable {
-    case single, a4
-    var id: String { rawValue }
-
-    /// The UserDefaults key; the pickers observe it via `@AppStorage`.
-    static let storageKey = "md.pdfLayout"
-
-    var label: String {
-        switch self {
-        case .single: return "One long page"
-        case .a4: return "A4 pages"
-        }
-    }
-
-    /// The stored preference, read by the export paths at render time.
-    static var current: PDFLayout {
-        PDFLayout(rawValue: UserDefaults.standard.string(forKey: storageKey) ?? "") ?? .single
-    }
-}
-
 /// Loads themed HTML into an offscreen web view, then yields a PDF or a
 /// print operation once layout has settled. Hold a strong reference for the
 /// duration of the operation — the print operation keeps using the web view.
 @MainActor
 final class WebRenderer: NSObject, WKNavigationDelegate {
-    /// A4 at 72 dpi, in points. The print job paginates to this page; the
-    /// shared / exported PDF keeps this width but grows into a single page
-    /// as tall as the content (see `makePDF`).
+    /// A4 at 72 dpi, in points — the page every print job and every
+    /// shared / exported PDF paginates to.
     static let pageSize = CGSize(width: 595, height: 842)
-
-    /// The largest page dimension the PDF format allows — 200 inches at
-    /// 72 dpi. CoreGraphics clips any page beyond this, so a document that
-    /// renders taller is scaled down uniformly to fit (see `makePDF`).
-    static let maxPageDimension: CGFloat = 14_400
 
     private let webView: WKWebView
     private let assets: MdAssetSchemeHandler
@@ -152,113 +114,8 @@ final class WebRenderer: NSObject, WKNavigationDelegate {
         }
     }
 
-    /// Capture the rendered document as **content-tall pages with no line
-    /// sliced by a cut**: one page for the whole document, or — when the
-    /// author placed `\newpage` markers — one page per section, each still
-    /// exactly as tall as its content. (Printing still paginates to real
-    /// paper; that's what paper needs.)
-    func makePDF() async throws -> Data {
-        // Grow the view (via its host panel — the web view is the panel's
-        // content view and follows) to the full rendered height before
-        // capturing: `createPDF` renders within the view's bounds, and an
-        // A4-sized view would clip the document and cut the line at the
-        // fold. CSS pixels equal points here (the view starts unscaled), so
-        // DOM geometry maps 1:1: the document height and the author's page
-        // cuts come straight from the DOM, and consecutive / edge markers
-        // collapse into nothing rather than emitting empty pages.
-        let height = max(WebRenderer.pageSize.height, await contentHeight())
-        // A cut inside the body's top / bottom padding means the marker is
-        // the first / last thing in the document — snap it to the edge so
-        // the `>= 2` rule below collapses it instead of emitting a
-        // padding-only sliver page.
-        let (rawCuts, padTop, padBottom) = await pageCuts()
-        let cuts = rawCuts
-            .map { $0 <= padTop + 1 ? 0 : ($0 >= height - padBottom - 1 ? height : $0) }
-            .map { min(max($0, 0), height) }
-            .sorted()
-        var segments: [(top: CGFloat, height: CGFloat)] = []
-        var top: CGFloat = 0
-        for cut in cuts + [height] {
-            if cut - top >= 2 { segments.append((top, cut - top)) }
-            top = max(top, cut)
-        }
-        if segments.isEmpty { segments = [(0, height)] }
-
-        // A page taller than the PDF format's 14,400 pt cap is scaled down
-        // uniformly instead of being clipped there (CoreGraphics cuts
-        // anything past the cap) — judged per page, so only a document with
-        // an oversize section shrinks. The shrink is a paint-only CSS
-        // transform while the view keeps its 595 CSS px layout width:
-        // transforms never re-flow content — CSS `zoom` does, and WebKit
-        // re-wrapped the text when we tried it — so the wrapping stays
-        // exactly the preview's; the pages just come out proportionally
-        // smaller, with nothing lost.
-        var scale: CGFloat = 1
-        if let tallest = segments.map(\.height).max(), tallest > WebRenderer.maxPageDimension {
-            scale = WebRenderer.maxPageDimension / tallest
-            await shrinkRendering(by: scale)
-        }
-        let pageWidth = (WebRenderer.pageSize.width * scale).rounded(.up)
-        hostPanel.setContentSize(CGSize(width: WebRenderer.pageSize.width,
-                                        height: max(WebRenderer.pageSize.height, height * scale)))
-        webView.layoutSubtreeIfNeeded()
-        // Give the web process a beat to repaint the newly exposed area;
-        // capturing immediately after the resize can yield blank regions.
-        try? await Task.sleep(nanoseconds: 300_000_000)
-
-        // One section → one page, straight out of WebKit.
-        if segments.count == 1 {
-            return try await capture(CGRect(x: 0, y: 0, width: pageWidth,
-                                            height: segments[0].height * scale))
-        }
-        // Several → capture each slice as its own page and assemble.
-        let assembled = PDFDocument()
-        for segment in segments {
-            let data = try await capture(CGRect(x: 0, y: segment.top * scale,
-                                                width: pageWidth,
-                                                height: segment.height * scale))
-            guard let document = PDFDocument(data: data), let page = document.page(at: 0) else {
-                throw PDFAssemblyError()
-            }
-            assembled.insert(page, at: assembled.pageCount)
-        }
-        guard let data = assembled.dataRepresentation() else { throw PDFAssemblyError() }
-        return data
-    }
-
-    private func capture(_ rect: CGRect) async throws -> Data {
-        let configuration = WKPDFConfiguration()
-        configuration.rect = rect
-        return try await withCheckedThrowingContinuation { continuation in
-            webView.createPDF(configuration: configuration) { result in
-                continuation.resume(with: result)
-            }
-        }
-    }
-
-    /// The tops of the author's `\newpage` markers plus the body's vertical
-    /// padding, in (unscaled) points — the padding lets `makePDF` tell a
-    /// marker at the very start / end of the document from a real cut.
-    private func pageCuts() async -> (cuts: [CGFloat], padTop: CGFloat, padBottom: CGFloat) {
-        await withCheckedContinuation { continuation in
-            webView.evaluateJavaScript(
-                "({top: parseFloat(getComputedStyle(document.body).paddingTop) || 0, " +
-                "bottom: parseFloat(getComputedStyle(document.body).paddingBottom) || 0, " +
-                "cuts: Array.from(document.querySelectorAll('.md-pagebreak')).map(e => e.getBoundingClientRect().top + window.scrollY)})") { value, _ in
-                let dict = value as? [String: Any] ?? [:]
-                let cuts = (dict["cuts"] as? [NSNumber] ?? []).map { CGFloat(truncating: $0) }
-                let top = (dict["top"] as? NSNumber).map { CGFloat(truncating: $0) } ?? 0
-                let bottom = (dict["bottom"] as? NSNumber).map { CGFloat(truncating: $0) } ?? 0
-                continuation.resume(returning: (cuts, top, bottom))
-            }
-        }
-    }
-
     /// The full height of the laid-out document, in points. Falls back to 0
-    /// (→ one A4 page) if the script can't run for some reason. Reads the
-    /// root element only: it reports in root coordinates, which shrink with
-    /// the body zoom `makePDF` applies — `body.scrollHeight` would keep
-    /// reporting in the body's own zoomed units and never converge.
+    /// if the script can't run for some reason.
     private func contentHeight() async -> CGFloat {
         await withCheckedContinuation { continuation in
             webView.evaluateJavaScript("document.documentElement.scrollHeight") { value, _ in
@@ -267,26 +124,12 @@ final class WebRenderer: NSObject, WKNavigationDelegate {
         }
     }
 
-    /// Shrink the document's rendering with a paint-only transform (used
-    /// when the content is taller than a PDF page may be), then wait a beat
-    /// so the repaint lands before the capture. Layout is untouched, so the
-    /// height measured before the shrink scales exactly.
-    private func shrinkRendering(by scale: CGFloat) async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            webView.evaluateJavaScript(
-                "document.body.style.transformOrigin = '0 0'; document.body.style.transform = 'scale(\(scale))'") { _, _ in
-                continuation.resume()
-            }
-        }
-        try? await Task.sleep(nanoseconds: 200_000_000)
-    }
-
     /// Capture the rendered document as real A4 pages — the print pipeline
-    /// pointed at a PDF file instead of a printer. WebKit paginates the
-    /// way it prints: line-aware (no line of text sliced at a fold) and
-    /// honoring the export CSS's `break-after: page`, so the author's
-    /// `\newpage` markers become page boundaries here too. Used when the
-    /// PDF Layout preference is A4; the default stays `makePDF`.
+    /// pointed at a PDF file instead of a printer, so a shared / exported
+    /// PDF is exactly what printing produces. WebKit paginates the way it
+    /// prints: line-aware (no line of text sliced at a fold) and honoring
+    /// the export CSS's `break-after: page`, so the author's `\newpage`
+    /// markers cut pages here too.
     func makeA4PDF(title: String) async throws -> Data {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("md-a4-\(UUID().uuidString).pdf")
@@ -335,8 +178,8 @@ final class WebRenderer: NSObject, WKNavigationDelegate {
         let height = max(WebRenderer.pageSize.height, await contentHeight())
         hostPanel.setContentSize(CGSize(width: WebRenderer.pageSize.width, height: height))
         webView.layoutSubtreeIfNeeded()
-        // Same repaint beat as `makePDF` — snapshotting the newly exposed
-        // area immediately can yield blank regions.
+        // Give the web process a beat to repaint the newly exposed area —
+        // snapshotting it immediately can yield blank regions.
         try? await Task.sleep(nanoseconds: 300_000_000)
         return await withCheckedContinuation { continuation in
             webView.evaluateJavaScript(
@@ -439,6 +282,11 @@ enum DocumentExport {
         do {
             try await renderer.load(html: html)
             let info = NSPrintInfo.shared.copy() as! NSPrintInfo
+            // The same A4 page the exported / shared PDF paginates to — so
+            // a document proofed via Export as PDF prints with the same
+            // folds, not the printer's default paper's (Page Setup can
+            // still override deliberately).
+            info.paperSize = WebRenderer.pageSize
             info.horizontalPagination = .fit
             info.verticalPagination = .automatic
             info.isHorizontallyCentered = false
@@ -448,6 +296,11 @@ enum DocumentExport {
             operation.showsPrintPanel = true
             operation.showsProgressPanel = true
             operation.jobTitle = title
+            // WKWebView's printing view starts with a zero frame and won't
+            // size itself; without this, pagination aborts ("view's frame
+            // was not initialized properly before knowsPageRange:") — the
+            // same landmine `makeA4PDF` steps over.
+            operation.view?.frame = NSRect(origin: .zero, size: info.paperSize)
             // `run()` is synchronous: it spins the modal panel and returns
             // only once printing finishes, so `renderer` (and the web view
             // the operation is still reading) stays alive for the whole job.
@@ -461,23 +314,13 @@ enum DocumentExport {
         withExtendedLifetime(renderer) {}
     }
 
-    /// The PDF bytes for the current layout preference: one content-tall
-    /// page per section (the default), or real A4 pages via the print
-    /// pipeline. Both read the same rendered web view.
-    private static func makePDFData(_ renderer: WebRenderer, title: String) async throws -> Data {
-        switch PDFLayout.current {
-        case .single: return try await renderer.makePDF()
-        case .a4: return try await renderer.makeA4PDF(title: title)
-        }
-    }
-
     /// Render the document to a PDF and offer it through the share picker.
     static func sharePDF(source: String, title: String, dark: Bool) async {
         let html = MarkdownHTML.document(source, title: title, dark: dark, export: true)
         let renderer = WebRenderer()
         do {
             try await renderer.load(html: html)
-            let data = try await makePDFData(renderer, title: title)
+            let data = try await renderer.makeA4PDF(title: title)
             let url = FileManager.default.temporaryDirectory
                 .appendingPathComponent("\(sanitized(title)).pdf")
             try data.write(to: url, options: .atomic)
@@ -500,7 +343,7 @@ enum DocumentExport {
         let renderer = WebRenderer()
         do {
             try await renderer.load(html: html)
-            let data = try await makePDFData(renderer, title: title)
+            let data = try await renderer.makeA4PDF(title: title)
             let panel = NSSavePanel()
             panel.allowedContentTypes = [.pdf]
             panel.canCreateDirectories = true

@@ -15,6 +15,7 @@
 //
 
 import XCTest
+import AppKit
 @testable import md
 
 final class mdTests: XCTestCase {
@@ -564,6 +565,23 @@ final class mdTests: XCTestCase {
         XCTAssertTrue(export.contains("break-after: page"))
     }
 
+    func testExportPageIsPlainWhiteAndAlwaysLight() {
+        // Print / PDF pages keep their own single color: no paper tint
+        // (which would end mid-page next to the white A4 margins), and the
+        // light palette even from a dark window — dark cream-on-carbon is
+        // a screen theme, unreadable as cream-on-white.
+        let export = MarkdownHTML.document("hello", title: "t", dark: true, export: true)
+        XCTAssertTrue(export.contains("background: #FFFFFF"), "The page background is plain white")
+        XCTAssertTrue(export.contains("color-scheme: light"), "Export always renders light")
+        XCTAssertFalse(export.contains("#241E18"), "No dark-paper color anywhere in an export")
+        XCTAssertTrue(export.contains("data-md-dark=\"0\""),
+                      "The rich renderers (Mermaid theme) see the light mode too")
+        // The on-screen preview still honors the window's appearance.
+        let preview = MarkdownHTML.document("hello", title: "t", dark: true)
+        XCTAssertTrue(preview.contains("background: #241E18"), "Dark preview keeps the carbon paper")
+        XCTAssertTrue(preview.contains("data-md-dark=\"1\""))
+    }
+
     func testHTMLOmitsAuthorNotes() {
         let html = MarkdownHTML.document("visible\n\n<!-- note: secret draft thought -->",
                                          title: "t", dark: false)
@@ -774,6 +792,412 @@ final class mdTests: XCTestCase {
         // The chapter's articles nest inside the chapter's own item.
         XCTAssertTrue(nav.contains("<li><a href=\"unit-002.xhtml\">Chapter One</a>\n<ol>"))
         XCTAssertTrue(nav.contains("<a href=\"unit-003.xhtml\">First</a>"))
+    }
+
+    // MARK: Book workspace — reading order & selection remapping
+
+    /// A book snapshot straight from URLs — the listing is not under test.
+    private func makeBook(root: String, articles: [String], chapters: [(String, [String])]) -> Book {
+        let rootURL = URL(fileURLWithPath: root, isDirectory: true)
+        return Book(
+            root: rootURL,
+            articles: articles.map { BookArticle(url: rootURL.appendingPathComponent($0)) },
+            chapters: chapters.map { name, files in
+                let chapterURL = rootURL.appendingPathComponent(name, isDirectory: true)
+                return BookChapter(url: chapterURL,
+                                   articles: files.map { BookArticle(url: chapterURL.appendingPathComponent($0)) })
+            })
+    }
+
+    func testReadingOrderIsRootArticlesThenChapters() {
+        let book = makeBook(root: "/tmp/Book",
+                            articles: ["01-Preface.md"],
+                            chapters: [("02-One", ["01-a.md", "02-b.md"]),
+                                       ("03-Two", ["01-c.md"])])
+        XCTAssertEqual(BookLibrary.readingOrder(of: book).map(\.name),
+                       ["01-Preface", "01-a", "02-b", "01-c"])
+    }
+
+    func testReadingOrderOfEmptyBookIsEmpty() {
+        let book = makeBook(root: "/tmp/Book", articles: [], chapters: [("02-One", [])])
+        XCTAssertTrue(BookLibrary.readingOrder(of: book).isEmpty)
+    }
+
+    func testDestinationFollowsARenamedArticle() {
+        let folder = URL(fileURLWithPath: "/tmp/Book", isDirectory: true)
+        let moved = BookLibrary.destination(of: folder.appendingPathComponent("02-Draft.md"),
+                                            afterRenamesIn: folder,
+                                            plan: [(from: "02-Draft.md", to: "01-Draft.md"),
+                                                   (from: "01-Intro.md", to: "02-Intro.md")])
+        XCTAssertEqual(moved.lastPathComponent, "01-Draft.md")
+    }
+
+    func testDestinationFollowsAnArticleInsideARenamedChapter() {
+        let root = URL(fileURLWithPath: "/tmp/Book", isDirectory: true)
+        let article = root.appendingPathComponent("03-Middle").appendingPathComponent("01-Scene.md")
+        let moved = BookLibrary.destination(of: article, afterRenamesIn: root,
+                                            plan: [(from: "03-Middle", to: "02-Middle")])
+        XCTAssertEqual(moved.path, "/tmp/Book/02-Middle/01-Scene.md")
+    }
+
+    func testDestinationLeavesUntouchedURLsAlone() {
+        let root = URL(fileURLWithPath: "/tmp/Book", isDirectory: true)
+        let plan = [(from: "01-a.md", to: "02-a.md")]
+        // A sibling the plan doesn't mention…
+        let bystander = root.appendingPathComponent("03-c.md")
+        XCTAssertEqual(BookLibrary.destination(of: bystander, afterRenamesIn: root, plan: plan),
+                       bystander.standardizedFileURL)
+        // …and anything outside the folder entirely.
+        let outside = URL(fileURLWithPath: "/tmp/Elsewhere/01-a.md")
+        XCTAssertEqual(BookLibrary.destination(of: outside, afterRenamesIn: root, plan: plan),
+                       outside)
+    }
+
+    // MARK: Plain-text codec (shared by documents and the book editor)
+
+    func testCodecDecodesUTF8() {
+        let decoded = PlainTextCodec.decode(Data("# Привет\n".utf8))
+        XCTAssertEqual(decoded?.text, "# Привет\n")
+        XCTAssertEqual(decoded?.encoding, .utf8)
+    }
+
+    func testCodecDoesNotMistakeBOMlessCP1251ForUTF16() {
+        // Cyrillic prose in Windows-1251 — even-length and BOM-less, the
+        // shape a naive UTF-16 trial happily (and wrongly) accepts as CJK
+        // mojibake. It must decode as CP1251 and round-trip byte-exactly.
+        let original = "Привет, мир!"
+        let data = original.data(using: .windowsCP1251)!
+        let decoded = PlainTextCodec.decode(data)
+        XCTAssertEqual(decoded?.text, original)
+        XCTAssertEqual(decoded?.encoding, .windowsCP1251)
+        XCTAssertEqual(PlainTextCodec.encode(decoded!.text, preferred: decoded!.encoding).data, data)
+    }
+
+    func testCodecRoundTripsBOMedUTF16() {
+        let original = "# Chapter\n"
+        let data = original.data(using: .utf16)! // data(using:) writes a BOM
+        let decoded = PlainTextCodec.decode(data)
+        XCTAssertEqual(decoded?.text, original)
+        XCTAssertEqual(decoded?.encoding, .utf16)
+        // Re-encoding restores a BOM'd UTF-16 file, not a silently
+        // rewritten one.
+        XCTAssertEqual(String(data: PlainTextCodec.encode(original, preferred: .utf16).data,
+                              encoding: .utf16), original)
+    }
+
+    func testCodecUpgradesToUTF8AndSaysSo() {
+        // An emoji cannot live in CP1251: the encode must fall back to
+        // UTF-8 *and report it*, so an autosaving caller updates its
+        // remembered encoding instead of failing the same way every save.
+        let (data, encoding) = PlainTextCodec.encode("Привет 🙂", preferred: .windowsCP1251)
+        XCTAssertEqual(encoding, .utf8)
+        XCTAssertEqual(String(data: data, encoding: .utf8), "Привет 🙂")
+    }
+
+    // MARK: Writing stats (the workspace footer)
+
+    func testWordCountIsLocaleAwareNotAWhitespaceSplit() {
+        XCTAssertEqual(WritingStats.words(in: ""), 0)
+        XCTAssertEqual(WritingStats.words(in: "   \n\n"), 0)
+        XCTAssertEqual(WritingStats.words(in: "Hello, world!"), 2)
+        // An apostrophe joins a word; a dash alone is none.
+        XCTAssertEqual(WritingStats.words(in: "it's — done"), 2)
+        XCTAssertEqual(WritingStats.words(in: "One\ntwo\n\nthree"), 3)
+    }
+
+    // MARK: Book article session (in-place editing round-trip)
+
+    /// A scratch book folder on disk; the session is exercised against it
+    /// without any sandbox scope (the test seam `openBook(unscopedRoot:)`).
+    @MainActor
+    private func makeSessionBook() throws -> (root: URL, article: URL, session: BookArticleSession) {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("md-session-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        let article = root.appendingPathComponent("01-Scene.md")
+        try Data("# Scene\n".utf8).write(to: article)
+        let session = BookArticleSession()
+        session.openBook(unscopedRoot: root)
+        return (root, article, session)
+    }
+
+    @MainActor
+    func testSessionLoadsEditsAndFlushesToDisk() throws {
+        let (_, article, session) = try makeSessionBook()
+        XCTAssertTrue(session.select(article))
+        XCTAssertEqual(session.text, "# Scene\n")
+        XCTAssertEqual(session.editingURL, article.standardizedFileURL)
+
+        session.edit("# Scene\n\nIt was a dark and stormy night.\n")
+        XCTAssertTrue(session.dirty)
+        XCTAssertTrue(session.flushNow())
+        XCTAssertFalse(session.dirty)
+        XCTAssertEqual(try String(contentsOf: article, encoding: .utf8),
+                       "# Scene\n\nIt was a dark and stormy night.\n")
+        session.closeBook()
+    }
+
+    @MainActor
+    func testSessionSelectionChangeSavesTheOutgoingArticle() throws {
+        let (root, article, session) = try makeSessionBook()
+        let second = root.appendingPathComponent("02-Scene.md")
+        try Data("# Second\n".utf8).write(to: second)
+
+        XCTAssertTrue(session.select(article))
+        session.edit("# Scene, revised\n")
+        XCTAssertTrue(session.select(second))
+        // Moving on flushed the first article and loaded the second.
+        XCTAssertEqual(try String(contentsOf: article, encoding: .utf8), "# Scene, revised\n")
+        XCTAssertEqual(session.text, "# Second\n")
+        session.closeBook()
+    }
+
+    @MainActor
+    func testSessionRefusesToClobberAFileChangedUnderIt() throws {
+        let (_, article, session) = try makeSessionBook()
+        XCTAssertTrue(session.select(article))
+        session.edit("# Mine\n")
+        // Someone else rewrites the file (different size, so the staleness
+        // check cannot be fooled by coarse timestamps).
+        try Data("# Theirs, and much longer than before\n".utf8).write(to: article)
+
+        XCTAssertFalse(session.flushNow())
+        XCTAssertTrue(session.conflicted)
+        // Neither side was lost: theirs is on disk, mine is in the buffer.
+        XCTAssertEqual(try String(contentsOf: article, encoding: .utf8),
+                       "# Theirs, and much longer than before\n")
+        XCTAssertEqual(session.text, "# Mine\n")
+
+        // The writer decides: Keep My Version writes the buffer out.
+        session.resolveConflictKeepingMine()
+        XCTAssertFalse(session.conflicted)
+        XCTAssertEqual(try String(contentsOf: article, encoding: .utf8), "# Mine\n")
+        session.closeBook()
+    }
+
+    @MainActor
+    func testSessionReloadResolutionDiscardsTheBuffer() throws {
+        let (_, article, session) = try makeSessionBook()
+        XCTAssertTrue(session.select(article))
+        session.edit("# Mine\n")
+        try Data("# Theirs, and much longer than before\n".utf8).write(to: article)
+        XCTAssertFalse(session.flushNow())
+        XCTAssertTrue(session.conflicted)
+
+        session.resolveConflictReloading()
+        XCTAssertFalse(session.conflicted)
+        XCTAssertEqual(session.text, "# Theirs, and much longer than before\n")
+        // Nothing dirty remains, so closing writes nothing.
+        session.closeBook()
+        XCTAssertEqual(try String(contentsOf: article, encoding: .utf8),
+                       "# Theirs, and much longer than before\n")
+    }
+
+    @MainActor
+    func testSessionCloseBookFlushesPendingEdits() throws {
+        let (_, article, session) = try makeSessionBook()
+        XCTAssertTrue(session.select(article))
+        session.edit("# Closing time\n")
+        session.closeBook()
+        XCTAssertEqual(try String(contentsOf: article, encoding: .utf8), "# Closing time\n")
+    }
+
+    // MARK: Reading order — the ordered() comparator itself
+
+    func testOrderedPutsNumberedNamesFirstInNumericOrder() {
+        // Numeric, not lexicographic: 2 before 10; numbered before not.
+        XCTAssertTrue(BookLibrary.ordered("2. setup", "10-ending"))
+        XCTAssertFalse(BookLibrary.ordered("10-ending", "2. setup"))
+        XCTAssertTrue(BookLibrary.ordered("01-intro", "appendix"))
+        XCTAssertFalse(BookLibrary.ordered("appendix", "01-intro"))
+    }
+
+    func testOrderedFallsBackToFinderAlphabetical() {
+        XCTAssertTrue(BookLibrary.ordered("apple", "Banana"))
+        XCTAssertFalse(BookLibrary.ordered("Banana", "apple"))
+        // Equal leading numbers tie-break alphabetically too.
+        XCTAssertTrue(BookLibrary.ordered("01-a", "01-b"))
+    }
+
+    func testOrderedTreatsOverflowingDigitRunsAsUnnumbered() {
+        // A digit run too long for Int must not trap — it sorts as an
+        // unnumbered name instead.
+        XCTAssertTrue(BookLibrary.ordered("1-x", "99999999999999999999-y"))
+        XCTAssertFalse(BookLibrary.ordered("99999999999999999999-y", "1-x"))
+    }
+
+    @MainActor
+    func testSessionCleanFlushLeavesTheFileUntouched() throws {
+        // flushNow runs on every selection change and window focus; a
+        // clean session must not rewrite (and re-stamp) the file each time.
+        let (_, article, session) = try makeSessionBook()
+        XCTAssertTrue(session.select(article))
+        let before = try FileManager.default.attributesOfItem(atPath: article.path)[.modificationDate] as? Date
+        // Make sure a spurious rewrite could not land on the same stamp.
+        Thread.sleep(forTimeInterval: 0.05)
+
+        XCTAssertTrue(session.flushNow())
+
+        let after = try FileManager.default.attributesOfItem(atPath: article.path)[.modificationDate] as? Date
+        XCTAssertEqual(before, after)
+        session.closeBook()
+    }
+
+    @MainActor
+    func testSessionDeselectFlushesAndFullyDetaches() throws {
+        // select(nil) is the prelude of every managed file operation
+        // (rename / reorder / delete / create): it must flush the buffer
+        // and fully let go of the file before anything moves on disk.
+        let (_, article, session) = try makeSessionBook()
+        XCTAssertTrue(session.select(article))
+        session.edit("# Detached\n")
+
+        XCTAssertTrue(session.select(nil))
+        XCTAssertEqual(try String(contentsOf: article, encoding: .utf8), "# Detached\n")
+        XCTAssertNil(session.editingURL)
+        XCTAssertEqual(session.stage, .empty)
+        XCTAssertEqual(session.text, "")
+        XCTAssertFalse(session.dirty)
+        session.closeBook()
+    }
+
+    @MainActor
+    func testSessionFailedFlushAbortsTheSelectionChange() throws {
+        // The sidebar reverts its selection when select() returns false,
+        // on the contract that the session still holds the unsaved article.
+        let (root, article, session) = try makeSessionBook()
+        let second = root.appendingPathComponent("02-Scene.md")
+        try Data("# Second\n".utf8).write(to: second)
+        XCTAssertTrue(session.select(article))
+        session.edit("# Unsaved\n")
+        // Make the write fail: the article file itself becomes read-only.
+        try FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: article.path)
+
+        XCTAssertFalse(session.select(second))
+        XCTAssertEqual(session.editingURL, article.standardizedFileURL)
+        XCTAssertEqual(session.text, "# Unsaved\n")
+        XCTAssertTrue(session.dirty)
+        XCTAssertNotNil(session.saveErrorText)
+
+        // Once the file is writable again the same move succeeds.
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: article.path)
+        XCTAssertTrue(session.select(second))
+        XCTAssertEqual(try String(contentsOf: article, encoding: .utf8), "# Unsaved\n")
+        session.closeBook()
+    }
+
+    @MainActor
+    func testSessionHandOffForExternalOpenSavesThenStepsAside() throws {
+        // Opening the edited article in its own window must ship the
+        // buffer to disk first — the new window reads the file — and leave
+        // the session in handoff so there is never a second writer.
+        let (_, article, session) = try makeSessionBook()
+        XCTAssertTrue(session.select(article))
+        session.edit("# For the window\n")
+
+        XCTAssertTrue(session.handOffForExternalOpen())
+        XCTAssertEqual(try String(contentsOf: article, encoding: .utf8), "# For the window\n")
+        XCTAssertEqual(session.stage, .handoff(article.standardizedFileURL))
+        XCTAssertNil(session.editingURL)
+        session.closeBook()
+    }
+
+    @MainActor
+    func testSessionStepsAsideWhileADocumentOwnsTheArticle() throws {
+        // The two-writers guard: while an NSDocument window has the file,
+        // selecting it in the book yields a handoff, and the session
+        // reclaims it once the document goes away.
+        let (_, article, session) = try makeSessionBook()
+        let document = NSDocument()
+        document.fileURL = article
+        NSDocumentController.shared.addDocument(document)
+
+        XCTAssertTrue(session.select(article))
+        XCTAssertEqual(session.stage, .handoff(article.standardizedFileURL))
+        XCTAssertNil(session.editingURL)
+
+        NSDocumentController.shared.removeDocument(document)
+        session.recheckOwnership()
+        XCTAssertEqual(session.editingURL, article.standardizedFileURL)
+        XCTAssertEqual(session.text, "# Scene\n")
+        session.closeBook()
+    }
+
+    @MainActor
+    func testSessionRescueCopyParksTheBufferWithoutOverwriting() throws {
+        // The quit-time last resort: when the regular write cannot land,
+        // the buffer goes to a fresh "(rescued)" sibling, clobbering
+        // nothing.
+        let (root, article, session) = try makeSessionBook()
+        XCTAssertTrue(session.select(article))
+        session.edit("# Mine\n")
+        // Occupy the first rescue name to prove the copy never overwrites.
+        let taken = root.appendingPathComponent("01-Scene (rescued).md")
+        try Data("occupied".utf8).write(to: taken)
+
+        let rescued = try XCTUnwrap(session.writeRescueCopy(for: article))
+        XCTAssertEqual(rescued.lastPathComponent, "01-Scene (rescued 2).md")
+        XCTAssertEqual(try String(contentsOf: rescued, encoding: .utf8), "# Mine\n")
+        XCTAssertEqual(try String(contentsOf: taken, encoding: .utf8), "occupied")
+        // The rescue is a copy, not a save: the buffer is still dirty.
+        XCTAssertTrue(session.dirty)
+        session.closeBook()
+    }
+
+    @MainActor
+    func testBookFlushGateSavesTheBufferBeforeCompile() throws {
+        // The File menu's book output actions can't reach the session
+        // directly — the flush travels as a synchronous notification, and
+        // the buffer must be on disk by the time the post returns.
+        let (_, article, session) = try makeSessionBook()
+        XCTAssertTrue(session.select(article))
+        session.edit("# Through the gate\n")
+
+        let gate = BookFlushGate()
+        NotificationCenter.default.post(name: BookFlushGate.request, object: gate)
+        XCTAssertFalse(gate.vetoed)
+        XCTAssertEqual(try String(contentsOf: article, encoding: .utf8), "# Through the gate\n")
+        XCTAssertFalse(session.dirty)
+        session.closeBook()
+    }
+
+    @MainActor
+    func testBookFlushGateVetoesWhenTheSaveFails() throws {
+        // A compile must never ship a stale page: when the flush cannot
+        // land, the gate is vetoed and the output action aborts.
+        let (_, article, session) = try makeSessionBook()
+        XCTAssertTrue(session.select(article))
+        session.edit("# Unsavable\n")
+        try FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: article.path)
+
+        let gate = BookFlushGate()
+        NotificationCenter.default.post(name: BookFlushGate.request, object: gate)
+        XCTAssertTrue(gate.vetoed)
+        // Nothing was lost: the buffer is still the session's to save.
+        XCTAssertEqual(session.text, "# Unsavable\n")
+        XCTAssertTrue(session.dirty)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: article.path)
+        session.closeBook()
+        XCTAssertEqual(try String(contentsOf: article, encoding: .utf8), "# Unsavable\n")
+    }
+
+    @MainActor
+    func testSessionRoundTripsLegacyEncoding() throws {
+        let (root, _, session) = try makeSessionBook()
+        let legacy = root.appendingPathComponent("03-Legacy.md")
+        let original = "Привет, мир!"
+        try original.data(using: .windowsCP1251)!.write(to: legacy)
+
+        XCTAssertTrue(session.select(legacy))
+        XCTAssertEqual(session.text, original)
+        session.edit(original + " Ещё.")
+        XCTAssertTrue(session.flushNow())
+        // The save stayed in the file's own encoding.
+        XCTAssertEqual(try Data(contentsOf: legacy),
+                       (original + " Ещё.").data(using: .windowsCP1251)!)
+        session.closeBook()
     }
 }
 
