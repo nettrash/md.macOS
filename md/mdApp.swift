@@ -13,14 +13,16 @@
 //  not do, which is why the Mac build is a dedicated native target rather
 //  than a Catalyst port of the iOS app.)
 //
-//  The menu bar adds first-class File ▸ Print… (⌘P) and Share commands that
-//  act on the frontmost document window, routed through the
-//  `ActiveDocument` focused value the window publishes.
+//  The menu bar is the app's whole chrome — document windows carry no
+//  toolbar. File ▸ Print… (⌘P) and the Share commands act on the frontmost
+//  window through the `ActiveDocument` focused value it publishes; View ▸
+//  Edit / Split / Preview (⌘1/⌘2/⌘3) drive its mode switch; and the Go
+//  menu walks the book's articles (⌃⌘↑/↓) and the frontmost document's
+//  headings and private notes.
 //
-//  A second, auxiliary `Window` scene hosts the book navigator (writer
-//  mode, see `BookNavigator`): one app-wide window, opened on demand via
-//  File ▸ New Book… / Open Book… / Show Book (⇧⌘B) or the Book toolbar
-//  menu.
+//  A second, auxiliary `Window` scene hosts the book window (writer mode,
+//  see `BookNavigator`): one app-wide window, opened on demand via
+//  File ▸ New Book… / Open Book… / Show Book (⇧⌘B).
 //
 //  File ▸ Examples lists the sample documents bundled with the app (see
 //  `ExampleLibrary`); each opens as a fresh untitled document, and the
@@ -43,13 +45,51 @@ struct mdApp: App {
         .defaultSize(width: 900, height: 640)
         .commands { DocumentCommands() }
 
-        // The book navigator (writer mode) lives in its own single
-        // auxiliary window shared by the whole app: a book spans many
-        // documents, so it is deliberately not per-document UI.
+        // The book window (writer mode) lives in its own single auxiliary
+        // window shared by the whole app: a book spans many documents, so
+        // it is deliberately not per-document UI. It is a full writing
+        // workspace — structure sidebar plus an in-place editing pane (see
+        // `BookNavigator` / `BookWorkspace`) — hence a working default
+        // size, not a palette's; its native full screen is the
+        // distraction-free writing mode.
         Window("Book", id: BookLibrary.windowID) {
             BookNavigator()
         }
-        .defaultSize(width: 320, height: 520)
+        .defaultSize(width: 1000, height: 700)
+    }
+}
+
+// MARK: - Full screen capability
+
+/// Marks the hosting window as a full-screen citizen. SwiftUI does not put
+/// `.fullScreenPrimary` on the windows it creates here, which left the
+/// system's View ▸ Enter Full Screen item permanently disabled and the
+/// green button only zooming — verified against the running app. This
+/// grafts the capability on as soon as the view lands in its window; the
+/// system then supplies the whole feature (the menu item, the green
+/// button, fn-F) on its own.
+private struct FullScreenCapability: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        // Not attached to a window yet during make — defer one turn.
+        DispatchQueue.main.async {
+            view.window?.collectionBehavior.insert(.fullScreenPrimary)
+        }
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        view.window?.collectionBehavior.insert(.fullScreenPrimary)
+    }
+}
+
+extension View {
+    /// The hosting window can go full screen (the green button, View ▸
+    /// Enter Full Screen, fn-F). Applied to both window types: full screen
+    /// is the book workspace's distraction-free writing mode, and a
+    /// document window deserves it no less.
+    func fullScreenCapable() -> some View {
+        background(FullScreenCapability())
     }
 }
 
@@ -74,6 +114,102 @@ extension FocusedValues {
     var activeDocument: ActiveDocument? {
         get { self[ActiveDocumentKey.self] }
         set { self[ActiveDocumentKey.self] = newValue }
+    }
+}
+
+// MARK: - Frontmost view mode, for the View menu
+
+/// The Edit / Split / Preview switch of the frontmost editing surface — a
+/// document window or the book window's writing pane — published via
+/// `focusedSceneValue` so the View-menu ⌘1/⌘2/⌘3 commands drive whichever
+/// is in front. Equality is the mode alone: the closure just writes the
+/// publisher's own storage, and comparing it is neither possible nor
+/// needed.
+struct ViewModeSelection: Equatable {
+    var mode: DocumentView.Mode
+    let select: (DocumentView.Mode) -> Void
+    static func == (a: Self, b: Self) -> Bool { a.mode == b.mode }
+}
+
+private struct ViewModeSelectionKey: FocusedValueKey {
+    typealias Value = ViewModeSelection
+}
+
+extension FocusedValues {
+    var viewModeSelection: ViewModeSelection? {
+        get { self[ViewModeSelectionKey.self] }
+        set { self[ViewModeSelectionKey.self] = newValue }
+    }
+}
+
+// MARK: - Document outline & notes, for the Go menu
+
+// The parser's entry types live in the file shared verbatim with the iOS
+// app, so their Equatable conformances (which only this platform's focused
+// values need) are grafted on here — written out by hand, because synthesis
+// is only available in the type's own file.
+extension OutlineEntry: Equatable {
+    static func == (a: OutlineEntry, b: OutlineEntry) -> Bool {
+        a.level == b.level && a.text == b.text && a.slug == b.slug && a.line == b.line
+    }
+}
+
+extension NoteEntry: Equatable {
+    static func == (a: NoteEntry, b: NoteEntry) -> Bool {
+        a.text == b.text && a.line == b.line
+    }
+}
+
+/// The frontmost editing surface's headings and private notes, plus the
+/// jumps that navigate to them — what the Go menu is made of. Published by
+/// document windows and by the book window's writing pane. Equality is the
+/// content: the closures just aim the publisher's own panes.
+struct DocumentNavigation: Equatable {
+    var outline: [OutlineEntry]
+    var notes: [NoteEntry]
+    let jumpToHeading: (OutlineEntry) -> Void
+    let jumpToNote: (NoteEntry) -> Void
+    static func == (a: Self, b: Self) -> Bool {
+        a.outline == b.outline && a.notes == b.notes
+    }
+}
+
+private struct DocumentNavigationKey: FocusedValueKey {
+    typealias Value = DocumentNavigation
+}
+
+extension FocusedValues {
+    var documentNavigation: DocumentNavigation? {
+        get { self[DocumentNavigationKey.self] }
+        set { self[DocumentNavigationKey.self] = newValue }
+    }
+}
+
+// MARK: - Book article stepper, for the menu bar
+
+/// Previous / Next Article over the book's reading order, published by the
+/// book window so the ⌃⌘↑ / ⌃⌘↓ menu commands work while the writer's
+/// hands stay on the keyboard — a toolbar-only shortcut would lose the
+/// key-equivalent race against the focused text view. Equality is the two
+/// can-flags: they are what the menu items' enabled state hangs on.
+struct BookArticleStepper: Equatable {
+    var canPrevious: Bool
+    var canNext: Bool
+    let previous: () -> Void
+    let next: () -> Void
+    static func == (a: Self, b: Self) -> Bool {
+        a.canPrevious == b.canPrevious && a.canNext == b.canNext
+    }
+}
+
+private struct BookArticleStepperKey: FocusedValueKey {
+    typealias Value = BookArticleStepper
+}
+
+extension FocusedValues {
+    var bookArticleStepper: BookArticleStepper? {
+        get { self[BookArticleStepperKey.self] }
+        set { self[BookArticleStepperKey.self] = newValue }
     }
 }
 
@@ -145,15 +281,23 @@ enum ExampleLibrary {
 /// disabled when no document window has focus.
 struct DocumentCommands: Commands {
     @FocusedValue(\.activeDocument) private var document
+    /// The frontmost editing surface's mode switch (document window or the
+    /// book's writing pane) — drives the View-menu ⌘1/⌘2/⌘3.
+    @FocusedValue(\.viewModeSelection) private var viewMode
+    /// …and its outline and notes — the Go menu's content.
+    @FocusedValue(\.documentNavigation) private var navigation
+    /// The book window's Previous / Next Article actions (⌃⌘↑ / ⌃⌘↓).
+    @FocusedValue(\.bookArticleStepper) private var articleStepper
+    /// Whether a book is open — the Close Book command's enabled state.
+    @AppStorage(BookLibrary.bookmarkKey) private var bookBookmark = ""
     /// Opening scenes is an app-level action the environment provides even
     /// inside menu commands — how the book commands reach their window.
     @Environment(\.openWindow) private var openWindow
+    /// …and closing them — how Close Book takes the book window down.
+    @Environment(\.dismissWindow) private var dismissWindow
     /// Creating documents is likewise an environment action — how the
     /// Examples menu opens an example as a fresh untitled document.
     @Environment(\.newDocument) private var newDocument
-    /// The app-wide PDF layout preference (see `PDFLayout`), mirrored in
-    /// the share toolbar menu.
-    @AppStorage(PDFLayout.storageKey) private var pdfLayout = PDFLayout.single.rawValue
 
     var body: some Commands {
         // Writer mode: the book commands are app-wide — a book outlives any
@@ -183,6 +327,87 @@ struct DocumentCommands: Commands {
                 openWindow(id: BookLibrary.windowID)
             }
             .keyboardShortcut("b", modifiers: [.command, .shift])
+            Button("Close Book") {
+                // Forget the bookmark and take the book window down with it.
+                BookLibrary.closeBook()
+                dismissWindow(id: BookLibrary.windowID)
+            }
+            .disabled(bookBookmark.isEmpty)
+            Divider()
+            // The whole book's output, mirroring the book window's share
+            // menu (see `BookOutput`) — available from any window while a
+            // book is open, so shipping the book never means leaving the
+            // page being written. The document-scoped Share / Export /
+            // Print below keep acting on the frontmost document.
+            Button("Share Book as PDF") {
+                BookOutput.sharePDF()
+            }
+            .disabled(bookBookmark.isEmpty)
+            Button("Export Book as PDF…") {
+                BookOutput.exportPDF()
+            }
+            .disabled(bookBookmark.isEmpty)
+            Button("Export Book as EPUB…") {
+                BookOutput.exportEPUB()
+            }
+            .disabled(bookBookmark.isEmpty)
+            Button("Print Book…") {
+                BookOutput.printBook()
+            }
+            .disabled(bookBookmark.isEmpty)
+        }
+
+        // The frontmost window's Edit / Split / Preview, with the
+        // shortcuts a writer flips modes with all day. Toggles so the
+        // current mode wears a checkmark.
+        CommandGroup(before: .sidebar) {
+            ForEach(DocumentView.Mode.allCases) { mode in
+                Toggle(mode.label, isOn: Binding(
+                    get: { viewMode?.mode == mode },
+                    set: { _ in viewMode?.select(mode) }
+                ))
+                .keyboardShortcut(KeyEquivalent(Character(mode.commandKey)), modifiers: .command)
+                .disabled(viewMode == nil)
+            }
+            Divider()
+        }
+
+        // Navigation, gathered in the Mac's traditional Go menu: through
+        // the book's articles, and within the frontmost document. Menu
+        // commands, not toolbar shortcuts: the menu bar's key-equivalent
+        // dispatch wins even while the editor's text view has focus, and
+        // ⌃⌘↑/↓ is a chord neither the text view nor the system claims.
+        CommandMenu("Go") {
+            Button("Previous Article") {
+                articleStepper?.previous()
+            }
+            .keyboardShortcut(.upArrow, modifiers: [.control, .command])
+            .disabled(articleStepper?.canPrevious != true)
+            Button("Next Article") {
+                articleStepper?.next()
+            }
+            .keyboardShortcut(.downArrow, modifiers: [.control, .command])
+            .disabled(articleStepper?.canNext != true)
+            Divider()
+            // Contents — jump to any heading; two spaces of indent per
+            // level mirror the document's hierarchy inside the flat menu.
+            Menu("Contents") {
+                ForEach(navigation?.outline ?? [], id: \.line) { entry in
+                    Button(String(repeating: "  ", count: max(0, entry.level - 1)) + entry.text) {
+                        navigation?.jumpToHeading(entry)
+                    }
+                }
+            }
+            .disabled(navigation?.outline.isEmpty != false)
+            // Notes — the writer's private `<!-- note: … -->` comments.
+            Menu("Notes") {
+                ForEach(navigation?.notes ?? [], id: \.line) { note in
+                    Button(DocumentView.notePreview(note.text)) {
+                        navigation?.jumpToNote(note)
+                    }
+                }
+            }
+            .disabled(navigation?.notes.isEmpty != false)
         }
 
         // Replace the default (view-printing) Print item with one that
@@ -227,15 +452,6 @@ struct DocumentCommands: Commands {
                 }
             }
             .disabled(document == nil)
-
-            Divider()
-            // An app-wide setting rather than a per-document command, but
-            // it lives here, next to the PDF actions it shapes.
-            Picker("PDF Layout", selection: $pdfLayout) {
-                ForEach(PDFLayout.allCases) { layout in
-                    Text(layout.label).tag(layout.rawValue)
-                }
-            }
         }
     }
 }

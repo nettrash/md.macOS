@@ -5,18 +5,18 @@
 //  Created by nettrash on 29/06/2026.
 //
 //  The content of one document window: a raw-Markdown editor and a live
-//  rendered preview, with a mode switch in the window toolbar. macOS always
-//  has room, so all three modes are available — Edit, Split (side by side,
-//  re-rendering as you type) and Preview. The chosen mode is remembered per
-//  window via `@SceneStorage`, so two open document windows can each keep
-//  their own layout.
+//  rendered preview, with a footer counting the author's words and
+//  characters. macOS always has room, so all three modes are available —
+//  Edit, Split (side by side, re-rendering as you type) and Preview. The
+//  chosen mode is remembered per window via `@SceneStorage`, so two open
+//  document windows can each keep their own layout.
 //
 //  The whole window wears the typewriter theme — warm paper behind both
-//  panes, American Typewriter type — and the toolbar carries the mode
-//  switch (a native segmented control), the Contents / Notes navigation
-//  menus, the Book menu (writer mode, see `BookNavigator`) and a share /
-//  print menu. Undo / Redo aren't in the toolbar: macOS has a menu bar, so
-//  the standard Edit ▸ Undo / Redo drive the editor's `NSTextView` natively.
+//  panes, American Typewriter type — and deliberately carries NO toolbar:
+//  macOS has a menu bar, and everything lives there. View ▸ Edit / Split /
+//  Preview (⌘1/⌘2/⌘3) switch the mode, the Go menu jumps to headings and
+//  private notes, File carries the book, share and print commands, and the
+//  standard Edit ▸ Undo / Redo drive the editor's `NSTextView` natively.
 //
 //  Contents / Notes navigate via one-shot requests: choosing an entry
 //  bumps a small `@State` value (a fresh UUID plus the target), and the
@@ -24,12 +24,42 @@
 //  preview scrolls to the heading's anchor, the editor puts the caret on
 //  the source line.
 //
-//  The window also publishes its document to the menu bar via
-//  `focusedSceneValue`, so File ▸ Print… and the Share commands act on the
-//  frontmost window (see `mdApp.swift`).
+//  The window feeds the menu bar via `focusedSceneValue`: the document
+//  itself (File ▸ Print… / Share…), the mode switch (View menu), and its
+//  outline and notes (the Go menu) — see `mdApp.swift`.
 //
 
 import SwiftUI
+
+// MARK: - Split-view scroll sync
+
+/// Links the two panes of a Split view so they scroll as one: each pane
+/// reports the fraction of its scrollable range it sits at, and the other
+/// follows. Proportional, not line-mapped — the panes' heights diverge
+/// around tall rendered content (a diagram is one source line), but the
+/// neighborhood always matches, which is what side-by-side writing needs.
+///
+/// A plain class, deliberately not observable: scroll events arrive at
+/// display rate and must never re-render SwiftUI views. Each pane's
+/// coordinator registers its "follow" closure here and calls the opposite
+/// report method; echo suppression lives inside the panes (the editor
+/// brackets programmatic scrolls with a flag, the preview timestamps them
+/// in JS), so a relayed scroll never relays back.
+@MainActor
+final class ScrollSync {
+    /// Set by the editor pane: scroll the editor to a fraction [0, 1].
+    var scrollEditor: ((CGFloat) -> Void)?
+    /// Set by the preview pane: scroll the preview to a fraction [0, 1].
+    var scrollPreview: ((CGFloat) -> Void)?
+
+    func editorDidScroll(to fraction: CGFloat) {
+        scrollPreview?(fraction)
+    }
+
+    func previewDidScroll(to fraction: CGFloat) {
+        scrollEditor?(fraction)
+    }
+}
 
 struct DocumentView: View {
     @Binding var document: MarkdownDocument
@@ -40,17 +70,9 @@ struct DocumentView: View {
     let fileURL: URL?
 
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.openWindow) private var openWindow
-    @Environment(\.dismissWindow) private var dismissWindow
     /// Per-window mode preference (SceneStorage, not AppStorage, so each
     /// document window keeps its own layout).
     @SceneStorage("md.viewMode") private var storedMode = Mode.split.rawValue
-    /// The stored book bookmark (see `BookLibrary`), observed only so the
-    /// Book menu's Close item tracks whether a book is currently open.
-    @AppStorage(BookLibrary.bookmarkKey) private var bookBookmark = ""
-    /// The app-wide PDF layout preference (see `PDFLayout`), mirrored in
-    /// the File menu.
-    @AppStorage(PDFLayout.storageKey) private var pdfLayout = PDFLayout.single.rawValue
 
     /// One-shot navigation requests bumped by the Contents / Notes menus.
     /// Each pane consumes a request exactly once by its id and reports back,
@@ -59,6 +81,14 @@ struct DocumentView: View {
     /// it) would replay the old jump.
     @State private var previewNavigation: PreviewNavigation?
     @State private var editorJump: EditorJump?
+
+    /// The footer's counters and the Go menu's outline / notes, cached off
+    /// the per-keystroke `body` path (see `DerivedText`).
+    @State private var derived = DerivedText()
+
+    /// Links the panes' scrolling in Split (identity-stable across
+    /// renders; the panes register themselves on it).
+    @State private var scrollSync = ScrollSync()
 
     enum Mode: String, CaseIterable, Identifiable {
         case edit, split, preview
@@ -77,6 +107,15 @@ struct DocumentView: View {
             case .preview: return "eye"
             }
         }
+        /// The View-menu shortcut digit (⌘1 / ⌘2 / ⌘3), in `allCases`
+        /// order.
+        var commandKey: String {
+            switch self {
+            case .edit: return "1"
+            case .split: return "2"
+            case .preview: return "3"
+            }
+        }
     }
 
     /// The mode actually shown: the stored preference, defaulting to Split.
@@ -88,10 +127,14 @@ struct DocumentView: View {
     }
 
     var body: some View {
-        content
+        VStack(spacing: 0) {
+            content
+            Divider()
+            footer
+        }
             .background(Typewriter.paper.ignoresSafeArea())
             .frame(minWidth: 480, minHeight: 320)
-            .toolbar { toolbarContent }
+            .fullScreenCapable()
             // Hand the frontmost document to the menu-bar commands so
             // File ▸ Print… / Share… act on it (see `DocumentCommands`).
             .focusedSceneValue(\.activeDocument,
@@ -99,138 +142,36 @@ struct DocumentView: View {
                                               title: baseName,
                                               fileURL: fileURL,
                                               dark: colorScheme == .dark))
+            // …the mode switch, so the View-menu ⌘1/⌘2/⌘3 drive it…
+            .focusedSceneValue(\.viewModeSelection,
+                               ViewModeSelection(mode: effectiveMode,
+                                                 select: { storedMode = $0.rawValue }))
+            // …and the outline and notes, for the Go menu.
+            .focusedSceneValue(\.documentNavigation,
+                               DocumentNavigation(outline: derived.outline,
+                                                  notes: derived.notes,
+                                                  jumpToHeading: { jump(to: $0) },
+                                                  jumpToNote: { jump(to: $0) }))
+            // Recompute the derived values once per typing pause — the
+            // task restarts (cancelling the sleeping one) on every change.
+            .task(id: document.text) {
+                derived = await derived.refreshed(from: document.text)
+            }
     }
 
-    // MARK: - Toolbar
-
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        // Mode switch — a native segmented control, the Mac idiom.
-        ToolbarItem(placement: .principal) {
-            Picker("View Mode", selection: modeBinding) {
-                ForEach(Mode.allCases) { mode in
-                    Label(mode.label, systemImage: mode.symbol).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelStyle(.iconOnly)
-            .help("Switch between editing, split and preview")
+    /// The author's counters, book-workspace style: live words and
+    /// characters, tucked under the panes.
+    private var footer: some View {
+        HStack {
+            Spacer()
+            Text("\(derived.words) words · \(derived.characters) characters")
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
         }
-
-        // Contents — jump to any heading. Recomputing the outline on every
-        // toolbar refresh is fine: the parser's outline pass is
-        // line-oriented and cheap by design.
-        ToolbarItem(placement: .primaryAction) {
-            let outline = MarkdownParser.outline(document.text)
-            Menu {
-                ForEach(outline, id: \.line) { entry in
-                    Button {
-                        jump(to: entry)
-                    } label: {
-                        // Two spaces of indent per heading level mirror the
-                        // document's hierarchy inside the flat menu.
-                        Text(String(repeating: "  ", count: max(0, entry.level - 1)) + entry.text)
-                    }
-                }
-            } label: {
-                Label("Contents", systemImage: "list.bullet")
-            }
-            .menuIndicator(.hidden)
-            .disabled(outline.isEmpty)
-            .help("Jump to a heading")
-        }
-
-        // Notes — the writer's private `<!-- note: … -->` comments. They
-        // exist only in the source (never in the rendered output), so a
-        // note always jumps the *editor*.
-        ToolbarItem(placement: .primaryAction) {
-            let notes = MarkdownParser.notes(document.text)
-            Menu {
-                ForEach(notes, id: \.line) { note in
-                    Button {
-                        jump(to: note)
-                    } label: {
-                        Text(Self.notePreview(note.text))
-                    }
-                }
-            } label: {
-                Label("Notes", systemImage: "note.text")
-            }
-            .menuIndicator(.hidden)
-            .disabled(notes.isEmpty)
-            .help("Jump to a private author note")
-        }
-
-        // Book (writer mode) — mirrors the File-menu commands so the
-        // feature is discoverable from the toolbar. The book is app-wide
-        // state, not part of this document (see `BookNavigator`).
-        ToolbarItem(placement: .primaryAction) {
-            Menu {
-                Button("New Book…") {
-                    if BookLibrary.newBook() { openWindow(id: BookLibrary.windowID) }
-                }
-                Button("Open Book…") {
-                    if BookLibrary.chooseBook() { openWindow(id: BookLibrary.windowID) }
-                }
-                Button("Show Book") {
-                    openWindow(id: BookLibrary.windowID)
-                }
-                Divider()
-                Button("Close Book") {
-                    // Forget the bookmark and take the navigator window
-                    // down with it.
-                    BookLibrary.closeBook()
-                    dismissWindow(id: BookLibrary.windowID)
-                }
-                .disabled(bookBookmark.isEmpty)
-            } label: {
-                Label("Book", systemImage: "books.vertical")
-            }
-            .menuIndicator(.hidden)
-            .help("Open a folder of chapters and articles as a book")
-        }
-
-        // Share / export / print.
-        ToolbarItem(placement: .primaryAction) {
-            Menu {
-                Button {
-                    DocumentExport.shareSource(fileURL: fileURL, text: document.text, title: baseName)
-                } label: {
-                    Label("Share Source…", systemImage: "doc.plaintext")
-                }
-                Button {
-                    Task { await DocumentExport.sharePDF(source: document.text, title: baseName,
-                                                         dark: colorScheme == .dark) }
-                } label: {
-                    Label("Share Rendered PDF…", systemImage: "doc.richtext")
-                }
-                Button {
-                    Task { await DocumentExport.exportPDF(source: document.text, title: baseName,
-                                                          dark: colorScheme == .dark) }
-                } label: {
-                    Label("Export as PDF…", systemImage: "square.and.arrow.down")
-                }
-                Divider()
-                // The app-wide layout the two PDF actions above honor —
-                // mirrored in the File menu, like the actions themselves.
-                Picker("PDF Layout", selection: $pdfLayout) {
-                    ForEach(PDFLayout.allCases) { layout in
-                        Text(layout.label).tag(layout.rawValue)
-                    }
-                }
-                Divider()
-                Button {
-                    Task { await DocumentExport.print(source: document.text, title: baseName,
-                                                      dark: colorScheme == .dark) }
-                } label: {
-                    Label("Print…", systemImage: "printer")
-                }
-            } label: {
-                Label("Share", systemImage: "square.and.arrow.up")
-            }
-            .menuIndicator(.hidden)
-            .help("Share or print the document")
-        }
+        .font(Typewriter.font(11))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 5)
+        .background(Typewriter.paperSecondary)
     }
 
     // MARK: - Panes
@@ -264,19 +205,16 @@ struct DocumentView: View {
         }
     }
 
-    /// Binds the segmented control to the persisted mode.
-    private var modeBinding: Binding<Mode> {
-        Binding(get: { effectiveMode }, set: { storedMode = $0.rawValue })
-    }
-
     private var editorPane: some View {
         // Clear a performed jump out of state (guarded by id, in case a
         // newer request already replaced it): the pane's own dedupe dies
         // with the pane, so a request left in `@State` would replay into a
         // recreated editor after an Edit → Preview → Edit round-trip.
-        MarkdownEditor(text: $document.text, jump: editorJump) { handled in
-            if editorJump?.id == handled { editorJump = nil }
-        }
+        MarkdownEditor(text: $document.text, jump: editorJump,
+                       onJumpHandled: { handled in
+                           if editorJump?.id == handled { editorJump = nil }
+                       },
+                       scrollSync: scrollSync)
             .overlay(alignment: .topLeading) {
                 if document.text.isEmpty {
                     // The text view has no native placeholder; mimic one,
@@ -299,9 +237,11 @@ struct DocumentView: View {
         // The performed-navigation clearing mirrors the editor pane's — see
         // the comment there.
         MarkdownWebView(text: document.text, title: baseName,
-                        navigation: previewNavigation) { handled in
-            if previewNavigation?.id == handled { previewNavigation = nil }
-        }
+                        navigation: previewNavigation,
+                        onNavigationHandled: { handled in
+                            if previewNavigation?.id == handled { previewNavigation = nil }
+                        },
+                        scrollSync: scrollSync)
     }
 
     // MARK: - Navigation (Contents / Notes)
@@ -328,7 +268,8 @@ struct DocumentView: View {
 
     /// A menu-sized note preview: first line only, whitespace collapsed,
     /// capped at ~50 characters so one long note can't dwarf the menu.
-    private static func notePreview(_ text: String) -> String {
+    /// Internal: the book workspace's Notes menu shows the same previews.
+    static func notePreview(_ text: String) -> String {
         let firstLine = text.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
         let collapsed = firstLine.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         guard !collapsed.isEmpty else { return "(empty note)" }

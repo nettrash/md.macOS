@@ -53,6 +53,16 @@ struct MarkdownEditor: NSViewRepresentable {
     /// round-trip, the recreated coordinator would replay it and yank the
     /// caret (and first responder) back, unprompted.
     var onJumpHandled: ((UUID) -> Void)? = nil
+    /// The undo stack the editor should use instead of the window's. A
+    /// document window leaves this nil — its window's undo manager is the
+    /// `NSDocument`'s, which is also how the document tracks its edited
+    /// state. The book workspace passes one scoped to the article being
+    /// edited, so ⌘Z can never replay one article's keystrokes into
+    /// another after the selection moves on.
+    var undoOverride: UndoManager? = nil
+    /// The Split view's pane link (see `ScrollSync`): the editor reports
+    /// its scroll fraction here and follows the preview's.
+    var scrollSync: ScrollSync? = nil
 
     func makeNSView(context: Context) -> NSScrollView {
         // `scrollableTextView()` gives a vertically-resizable text view
@@ -98,11 +108,24 @@ struct MarkdownEditor: NSViewRepresentable {
 
         textView.string = text
         context.coordinator.textView = textView
+
+        // Report scrolling for the Split view's pane sync. The clip view's
+        // bounds move on every scroll (user or programmatic); the
+        // coordinator's flag tells the two apart.
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        let coordinator = context.coordinator
+        coordinator.scrollObserver = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView, queue: nil) { [weak coordinator] _ in
+                MainActor.assumeIsolated { coordinator?.editorScrolled() }
+            }
+        coordinator.registerScrollSync()
         return scrollView
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         context.coordinator.parent = self
+        context.coordinator.registerScrollSync()
         guard let textView = scrollView.documentView as? NSTextView else { return }
         // Only reassign on a genuine *external* change (revert, open, a
         // programmatic edit) — never on our own keystroke echo, which would
@@ -143,8 +166,58 @@ struct MarkdownEditor: NSViewRepresentable {
         weak var textView: NSTextView?
         /// The last `EditorJump.id` already performed (see `updateNSView`).
         var lastJumpID: UUID?
+        /// Observes the clip view's bounds for the scroll sync.
+        var scrollObserver: NSObjectProtocol?
+        /// True while a scroll relayed *from* the preview is being applied,
+        /// so it isn't reported straight back (the feedback loop guard —
+        /// clip-view notifications are synchronous, which is what makes a
+        /// plain flag sufficient).
+        private var applyingRemoteScroll = false
 
         init(_ parent: MarkdownEditor) { self.parent = parent }
+
+        deinit {
+            if let scrollObserver { NotificationCenter.default.removeObserver(scrollObserver) }
+        }
+
+        /// (Re-)hand the sync our "follow the preview" closure. Called
+        /// from make and update: pane recreation (a mode round-trip, a
+        /// book article switch) must always leave the *live* coordinator
+        /// registered.
+        @MainActor func registerScrollSync() {
+            parent.scrollSync?.scrollEditor = { [weak self] fraction in
+                self?.applyScrollFraction(fraction)
+            }
+        }
+
+        /// The scrollable range's geometry: nil when there is nothing to
+        /// scroll (content fits the viewport).
+        @MainActor private func scrollGeometry() -> (scrollView: NSScrollView, maxOffset: CGFloat)? {
+            guard let scrollView = textView?.enclosingScrollView else { return nil }
+            let maxOffset = (scrollView.documentView?.frame.height ?? 0)
+                - scrollView.contentView.bounds.height
+            guard maxOffset > 0 else { return nil }
+            return (scrollView, maxOffset)
+        }
+
+        /// A bounds change that isn't our own doing: report the fraction.
+        @MainActor func editorScrolled() {
+            guard !applyingRemoteScroll, parent.scrollSync != nil,
+                  let (scrollView, maxOffset) = scrollGeometry() else { return }
+            let fraction = scrollView.contentView.bounds.origin.y / maxOffset
+            parent.scrollSync?.editorDidScroll(to: min(max(fraction, 0), 1))
+        }
+
+        /// Follow the preview to `fraction` of the scrollable range.
+        @MainActor func applyScrollFraction(_ fraction: CGFloat) {
+            guard let (scrollView, maxOffset) = scrollGeometry() else { return }
+            applyingRemoteScroll = true
+            let origin = NSPoint(x: scrollView.contentView.bounds.origin.x,
+                                 y: min(max(fraction, 0), 1) * maxOffset)
+            scrollView.contentView.setBoundsOrigin(origin)
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+            applyingRemoteScroll = false
+        }
 
         /// Push the text view's current contents back through the binding —
         /// this is what marks the document dirty → autosave.
@@ -154,6 +227,13 @@ struct MarkdownEditor: NSViewRepresentable {
         }
 
         func textDidChange(_ notification: Notification) { sync() }
+
+        /// The editor's undo stack: the owner's override when one was
+        /// passed, else the window's — the same manager `NSTextView` would
+        /// have resolved on its own, so document windows are unaffected.
+        func undoManager(for view: NSTextView) -> UndoManager? {
+            parent.undoOverride ?? view.window?.undoManager
+        }
 
         /// Move the caret to the start of a 0-based source line, scroll it
         /// into view, and focus the editor so typing continues right there.

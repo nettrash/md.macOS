@@ -23,6 +23,7 @@
 		D000000000000000000020AE /* MarkdownHTML.swift in Sources */ = {isa = PBXBuildFile; fileRef = D000000000000000000010AE /* MarkdownHTML.swift */; };
 		D0000000000000000000F102 /* MarkdownWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000000000000000000F101 /* MarkdownWebView.swift */; };
 		D0000000000000000000F302 /* BookNavigator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000000000000000000F301 /* BookNavigator.swift */; };
+		D0000000000000000000F602 /* BookWorkspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000000000000000000F601 /* BookWorkspace.swift */; };
 		D0000000000000000000F111 /* rich in Resources */ = {isa = PBXBuildFile; fileRef = D0000000000000000000F110 /* rich */; };
 		D000000000000000000020AF /* DocumentExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D000000000000000000010AF /* DocumentExport.swift */; };
 		D0000000000000000000F402 /* TestData in Resources */ = {isa = PBXBuildFile; fileRef = D0000000000000000000F401 /* TestData */; };
@@ -59,6 +60,7 @@
 		D000000000000000000010AE /* MarkdownHTML.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownHTML.swift; sourceTree = "<group>"; };
 		D0000000000000000000F101 /* MarkdownWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownWebView.swift; sourceTree = "<group>"; };
 		D0000000000000000000F301 /* BookNavigator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookNavigator.swift; sourceTree = "<group>"; };
+		D0000000000000000000F601 /* BookWorkspace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookWorkspace.swift; sourceTree = "<group>"; };
 		D0000000000000000000F401 /* TestData */ = {isa = PBXFileReference; lastKnownFileType = folder; path = TestData; sourceTree = "<group>"; };
 		D0000000000000000000F403 /* TestDataTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestDataTests.swift; sourceTree = "<group>"; };
 		D0000000000000000000F501 /* Examples */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Examples; sourceTree = "<group>"; };
@@ -110,6 +112,7 @@
 				D000000000000000000010A1 /* mdApp.swift */,
 				D000000000000000000010A6 /* DocumentView.swift */,
 				D0000000000000000000F301 /* BookNavigator.swift */,
+				D0000000000000000000F601 /* BookWorkspace.swift */,
 				D000000000000000000010AD /* MarkdownEditor.swift */,
 				D000000000000000000010A2 /* MarkdownDocument.swift */,
 				D000000000000000000010A3 /* MarkdownParser.swift */,
@@ -254,6 +257,7 @@
 			files = (
 				D000000000000000000020A6 /* DocumentView.swift in Sources */,
 				D0000000000000000000F302 /* BookNavigator.swift in Sources */,
+				D0000000000000000000F602 /* BookWorkspace.swift in Sources */,
 				D000000000000000000020AD /* MarkdownEditor.swift in Sources */,
 				D000000000000000000020A2 /* MarkdownDocument.swift in Sources */,
 				D000000000000000000020A3 /* MarkdownParser.swift in Sources */,
@@ -422,7 +426,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 74;
+				CURRENT_PROJECT_VERSION = 93;
 				DEVELOPMENT_ASSET_PATHS = "\"md/Preview Content\"";
 				DEVELOPMENT_TEAM = V4WM2SJ8Q9;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -454,7 +458,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 74;
+				CURRENT_PROJECT_VERSION = 93;
 				DEVELOPMENT_ASSET_PATHS = "\"md/Preview Content\"";
 				DEVELOPMENT_TEAM = V4WM2SJ8Q9;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -482,7 +486,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 74;
+				CURRENT_PROJECT_VERSION = 93;
 				DEVELOPMENT_TEAM = V4WM2SJ8Q9;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -505,7 +509,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 74;
+				CURRENT_PROJECT_VERSION = 93;
 				DEVELOPMENT_TEAM = V4WM2SJ8Q9;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (

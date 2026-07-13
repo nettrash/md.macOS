@@ -6,10 +6,16 @@
 //
 //  Writer mode. A "book" is nothing more than a folder the writer picks —
 //  its subfolders are chapters, and the Markdown (.md / .markdown / .txt)
-//  files inside are articles. The navigator is a small auxiliary window
-//  (`Window("Book")` in `mdApp`) that lists the book in reading order and
-//  opens any article as a normal document window, so the writer can hop
-//  between scenes without a single open panel.
+//  files inside are articles. The book window (`Window("Book")` in
+//  `mdApp`) is the writing workspace: a split view with the book's
+//  structure in a compact sidebar, in reading order, and the selected
+//  article edited *in place* in the detail pane — Edit / Split / Preview,
+//  like a document window (the in-place machinery lives in
+//  `BookWorkspace.swift`). Full screen turns it into the distraction-free
+//  writing mode: nothing on screen but the book. For writers who prefer
+//  the old way, a share-menu toggle ("Open Articles in Separate Windows")
+//  makes selection open document windows instead, and a double-click or
+//  the context menu always can.
 //
 //  Reading order: names with a leading integer prefix ("01-intro",
 //  "2. setup") come first, sorted by that number; everything else follows
@@ -185,8 +191,10 @@ enum BookLibrary {
     }
 
     /// The modal warning every failed book file-operation shows — the same
-    /// "no silent failures" convention as the export alerts.
-    private static func presentError(_ message: String, informative: String) {
+    /// "no silent failures" convention as the export alerts. Internal so
+    /// the workspace session (`BookArticleSession`) reports its failures
+    /// through the same door.
+    static func presentError(_ message: String, informative: String) {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = message
@@ -273,14 +281,17 @@ enum BookLibrary {
     /// Create "<name>.md" inside `folder` (the book root or a chapter),
     /// seeded with a matching level-1 heading so the new article renders
     /// sensibly the moment it opens. Never overwrites an existing file.
-    /// `folder` must lie inside the book — its access rights come from the
-    /// root scope started here.
-    static func createArticle(named name: String, in folder: URL) -> Bool {
-        guard let root = beginAccess() else { return false }
+    /// Returns the created file's URL — the workspace selects it so the
+    /// writer lands straight in the fresh article. `folder` must lie
+    /// inside the book — its access rights come from the root scope
+    /// started here.
+    static func createArticle(named name: String, in folder: URL) -> URL? {
+        guard let root = beginAccess() else { return nil }
         defer { endAccess(root) }
         let url = folder.appendingPathComponent(name).appendingPathExtension("md")
-        guard !FileManager.default.fileExists(atPath: url.path) else { return false }
-        return (try? Data("# \(name)\n".utf8).write(to: url)) != nil
+        guard !FileManager.default.fileExists(atPath: url.path) else { return nil }
+        guard (try? Data("# \(name)\n".utf8).write(to: url)) != nil else { return nil }
+        return url
     }
 
     // MARK: Managing (rename / reorder / delete)
@@ -409,6 +420,32 @@ enum BookLibrary {
             presentError("Could not reorder", informative: error.localizedDescription)
             return false
         }
+    }
+
+    /// The whole book flattened into reading order — the top-level
+    /// articles (the front matter), then each chapter's articles. This is
+    /// the sequence Previous / Next Article steps through, and the same
+    /// order the PDF compile and the EPUB use.
+    static func readingOrder(of book: Book) -> [BookArticle] {
+        book.articles + book.chapters.flatMap(\.articles)
+    }
+
+    /// Where `url` ends up after `plan` renames siblings inside `folder` —
+    /// the item itself may be renamed, or one of its ancestors (an article
+    /// inside a renamed chapter). URLs outside `folder`, and names the
+    /// plan doesn't touch, come back unchanged. Pure, so the workspace's
+    /// selection-remapping is testable without touching a disk.
+    static func destination(of url: URL, afterRenamesIn folder: URL,
+                            plan: [(from: String, to: String)]) -> URL {
+        let folderPath = folder.standardizedFileURL.path
+        let urlPath = url.standardizedFileURL.path
+        guard urlPath.hasPrefix(folderPath + "/") else { return url }
+        var components = urlPath.dropFirst(folderPath.count + 1)
+            .split(separator: "/").map(String.init)
+        guard let first = components.first,
+              let renamed = plan.first(where: { $0.from == first })?.to else { return url }
+        components[0] = renamed
+        return components.reduce(folder.standardizedFileURL) { $0.appendingPathComponent($1) }
     }
 
     // MARK: Compilation (the whole book as one document)
@@ -548,20 +585,101 @@ enum BookLibrary {
     }
 }
 
-// MARK: - Navigator window
+// MARK: - Book output (share / export / print the whole book)
+
+/// The whole-book output actions — compile the book and hand it to the
+/// same output paths as a document. App-wide, like the book itself: they
+/// serve the File menu (from any window, whenever a book is open) and the
+/// book window's share menu alike. Every action first asks the in-place
+/// editor to save (see `BookFlushGate`), so the page the writer is looking
+/// at is the page that ships; a failed save aborts — its notice is already
+/// on the book window's screen. The compiled output renders through the
+/// export pipeline, which is always light-on-white, so no appearance needs
+/// capturing here.
+@MainActor
+enum BookOutput {
+
+    /// Save the in-place editor's buffer, if any window holds one.
+    private static func flushEditor() -> Bool {
+        let gate = BookFlushGate()
+        NotificationCenter.default.post(name: BookFlushGate.request, object: gate)
+        return !gate.vetoed
+    }
+
+    /// The title page, chapter headings and articles in reading order —
+    /// each starting a fresh A4 page — through the share picker.
+    static func sharePDF() {
+        guard flushEditor(), let compiled = BookLibrary.compileBookSource() else { return }
+        Task { await DocumentExport.sharePDF(source: compiled.source,
+                                             title: compiled.title, dark: false) }
+    }
+
+    /// The same compile, saved where the user chooses as "<book>.pdf".
+    static func exportPDF() {
+        guard flushEditor(), let compiled = BookLibrary.compileBookSource() else { return }
+        Task { await DocumentExport.exportPDF(source: compiled.source,
+                                              title: compiled.title, dark: false) }
+    }
+
+    /// The same compile, straight to the print panel.
+    static func printBook() {
+        guard flushEditor(), let compiled = BookLibrary.compileBookSource() else { return }
+        Task { await DocumentExport.print(source: compiled.source,
+                                          title: compiled.title, dark: false) }
+    }
+
+    /// The book as an EPUB 3 (see `EPUBExport`) — same reading order as
+    /// the PDF compile, saved where the user chooses as "<book>.epub".
+    static func exportEPUB() {
+        guard flushEditor(), let book = BookLibrary.readEPUBBook() else { return }
+        Task { await DocumentExport.exportEPUB(book: book) }
+    }
+}
+
+// MARK: - Book window (structure sidebar + in-place writing pane)
 
 struct BookNavigator: View {
     /// The stored bookmark, observed so this window refreshes itself
     /// whenever *any* window opens or closes a book — the value change
     /// flows through UserDefaults.
     @AppStorage(BookLibrary.bookmarkKey) private var storedBookmark = ""
+    /// The legacy behavior, kept as a choice: selecting an article opens
+    /// it in its own document window instead of editing it in place.
+    @AppStorage("md.bookOpensInSeparateWindows") private var opensInSeparateWindows = false
+    /// The last article written in, as a path relative to the book root —
+    /// relative, because the root travels behind a security-scoped
+    /// bookmark that keeps resolving after the folder moves. Restored when
+    /// the window opens, so the writer resumes mid-book, not at a blank
+    /// pane.
+    @AppStorage("md.bookLastArticle") private var lastArticlePath = ""
+    /// The workspace's Edit / Split / Preview mode. App storage, not scene
+    /// storage: there is exactly one book window, and the writer's chosen
+    /// layout should survive a relaunch.
+    @AppStorage("md.bookViewMode") private var storedMode = DocumentView.Mode.split.rawValue
     @Environment(\.openDocument) private var openDocument
     /// Captured so a compiled book's PDF matches this window's appearance,
     /// exactly as a document export matches its window's.
     @Environment(\.colorScheme) private var colorScheme
 
+    /// The one article being edited in place (see `BookWorkspace.swift`).
+    @StateObject private var session = BookArticleSession()
+
     /// The current disk snapshot; nil shows the "no book" placeholder.
     @State private var book: Book?
+    /// The sidebar's selected article. Side effects (loading it into the
+    /// session, or opening a window in legacy mode) run in `onChange`.
+    @State private var selection: URL?
+
+    /// One-shot navigation requests for the panes, bumped by the Contents
+    /// / Notes toolbar menus — same request-by-id idiom as `DocumentView`.
+    @State private var previewNavigation: PreviewNavigation?
+    @State private var editorJump: EditorJump?
+
+    /// The article's counters, outline and notes — one cached scan shared
+    /// by the footer, the toolbar menus and the Go menu, recomputed once
+    /// per typing pause instead of inside every `body` pass (see
+    /// `DerivedText`).
+    @State private var derived = DerivedText()
 
     // Creation prompts — one name field each; a new article also remembers
     // which section's button was clicked, i.e. its destination folder.
@@ -582,58 +700,62 @@ struct BookNavigator: View {
     @State private var deleteName = ""
     @State private var deleteIsChapter = false
 
+    private var mode: DocumentView.Mode { .init(rawValue: storedMode) ?? .split }
+    private var modeBinding: Binding<DocumentView.Mode> {
+        Binding(get: { mode }, set: { storedMode = $0.rawValue })
+    }
+
     var body: some View {
         Group {
             if let book {
-                list(for: book)
+                workspace(for: book)
             } else {
                 emptyState
+                    .background(Typewriter.paper.ignoresSafeArea())
+                    .frame(minWidth: 260, minHeight: 320)
             }
         }
-        .background(Typewriter.paper.ignoresSafeArea())
-        .frame(minWidth: 260, minHeight: 320)
         .navigationTitle(book?.name ?? "Book")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    chapterName = ""
-                    isNamingChapter = true
-                } label: {
-                    Label("New Chapter…", systemImage: "folder.badge.plus")
-                }
-                .disabled(book == nil)
-                .help("Create a new chapter folder in the book")
-            }
-            // Compile the whole book to one PDF or EPUB — same menu idiom
-            // as the document windows' share menu.
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button {
-                        compileBook(export: false)
-                    } label: {
-                        Label("Share as PDF", systemImage: "doc.richtext")
-                    }
-                    Button {
-                        compileBook(export: true)
-                    } label: {
-                        Label("Export as PDF…", systemImage: "square.and.arrow.down")
-                    }
-                    Divider()
-                    Button {
-                        exportEPUB()
-                    } label: {
-                        Label("Export as EPUB…", systemImage: "book.closed")
-                    }
-                } label: {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                }
-                .menuIndicator(.hidden)
-                .disabled(book == nil)
-                .help("Compile the whole book into one PDF or EPUB")
-            }
+        .navigationSubtitle(session.title)
+        // Full screen IS this workspace's distraction-free writing mode —
+        // the window must be able to enter it.
+        .fullScreenCapable()
+        .onAppear {
+            session.openBook()
+            reload()
+            // The window can reopen with its selection state intact (the
+            // scene outlives the window) while the session starts empty —
+            // and a same-value selection write never fires onChange. Run
+            // the side effects by hand; selectionChanged is idempotent.
+            selectionChanged(selection)
         }
-        .onAppear(perform: reload)
-        .onChange(of: storedBookmark) { reload() }
+        // The window closing is the session's last chance to save and to
+        // release the held security scope.
+        .onDisappear {
+            session.closeBook()
+        }
+        .onChange(of: storedBookmark) {
+            // A different book (or none): tear the session down around the
+            // old scope before touching the new bookmark.
+            let previous = selection
+            selection = nil
+            session.closeBook()
+            session.openBook()
+            reload()
+            // All of the above runs in one SwiftUI transaction: if the new
+            // book restores the same selection value, onChange(of:
+            // selection) sees no net change and never fires — reattach by
+            // hand (see performManaged).
+            if selection == previous { selectionChanged(selection) }
+        }
+        .onChange(of: selection) { _, url in
+            selectionChanged(url)
+        }
+        // One derived-text scan per typing pause (or article switch) — the
+        // restarted task cancels the sleeping one.
+        .task(id: session.text) {
+            derived = await derived.refreshed(from: session.text)
+        }
         .alert("New Chapter", isPresented: $isNamingChapter) {
             TextField("Name", text: $chapterName)
             Button("Create") { createChapter() }
@@ -665,21 +787,39 @@ struct BookNavigator: View {
         }
     }
 
-    // MARK: Content
+    // MARK: Workspace (the split view)
 
-    private func list(for book: Book) -> some View {
-        List {
-            // Top-level articles first — the book's front matter — then the
-            // chapters, each as its own section. Chapter headers carry the
-            // same management menu as the rows; a chapter's sibling group
-            // is the book's chapter list, renumbered inside the root.
+    /// The writing workspace: the book's structure in a compact sidebar,
+    /// the selected article front and center. The window's native full
+    /// screen (the green button, ⌃⌘F) turns this into the distraction-free
+    /// writing mode — nothing on screen but the book.
+    private func workspace(for book: Book) -> some View {
+        NavigationSplitView {
+            sidebar(for: book)
+                // Enough for article names; never a rival to the writing
+                // area.
+                .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
+        } detail: {
+            detail(for: book)
+        }
+        .frame(minWidth: 700, minHeight: 400)
+    }
+
+    // MARK: Sidebar (structure)
+
+    private func sidebar(for book: Book) -> some View {
+        // Top-level articles first — the book's front matter — then the
+        // chapters, each as its own section. Chapter headers carry the
+        // same management menu as the rows; a chapter's sibling group
+        // is the book's chapter list, renumbered inside the root.
+        List(selection: $selection) {
             Section {
-                articleRows(book.articles, in: book.root)
+                articleRows(book.articles)
                 newArticleButton(in: book.root)
             }
             ForEach(Array(book.chapters.enumerated()), id: \.element.id) { index, chapter in
                 Section {
-                    articleRows(chapter.articles, in: chapter.url)
+                    articleRows(chapter.articles)
                     newArticleButton(in: chapter.url)
                 } header: {
                     Text(chapter.name)
@@ -692,29 +832,331 @@ struct BookNavigator: View {
                 }
             }
         }
-        // Let the typewriter paper show through instead of the default
+        // Let the sidebar's native material show instead of the default
         // list background.
         .scrollContentBackground(.hidden)
+        // The rows' menu and double-click, at the List level — the row's
+        // selection value comes in as `urls`. Attaching a TapGesture to the
+        // rows instead would race the table's own mouseDown: every click
+        // waits out the double-click window and clicks on the label can be
+        // swallowed whole, which read as "slow, and some articles don't
+        // select". `primaryAction` IS the native double-click.
+        .contextMenu(forSelectionType: URL.self) { urls in
+            if let url = urls.first, let context = articleContext(of: url) {
+                Button("Open in New Window") { openInWindow(url) }
+                Divider()
+                managementMenu(for: url, named: context.name,
+                               isChapter: false, index: context.index,
+                               of: context.siblings, in: context.folder)
+            }
+        } primaryAction: { urls in
+            // Double-click: this article in its own window — the one-gesture
+            // road to the old behavior.
+            if let url = urls.first { openInWindow(url) }
+        }
+        .toolbar {
+            // Lives over the column it acts on; it collapsing along with
+            // the sidebar is the idiom, not a bug.
+            ToolbarItem {
+                Button {
+                    chapterName = ""
+                    isNamingChapter = true
+                } label: {
+                    Label("New Chapter…", systemImage: "folder.badge.plus")
+                }
+                .help("Create a new chapter folder in the book")
+            }
+        }
     }
 
     /// The rows for one sibling group of articles — the unit Move Up /
-    /// Move Down reorder within.
-    private func articleRows(_ articles: [BookArticle], in folder: URL) -> some View {
-        ForEach(Array(articles.enumerated()), id: \.element.id) { index, article in
-            Button {
-                open(article)
-            } label: {
-                Label(article.name, systemImage: "doc.text")
-                    .font(Typewriter.font(13))
-            }
-            .buttonStyle(.plain)
-            .contextMenu {
-                managementMenu(for: article.url, named: article.name,
-                               isChapter: false, index: index,
-                               of: articles.map { $0.url.lastPathComponent },
-                               in: folder)
+    /// Move Down reorder within. Plain tagged labels and nothing else:
+    /// selection is the List's (a `Button` row — or any tap gesture — would
+    /// swallow the click); the menu and double-click live on the List (see
+    /// `sidebar`).
+    private func articleRows(_ articles: [BookArticle]) -> some View {
+        ForEach(articles) { article in
+            Label(article.name, systemImage: "doc.text")
+                .font(Typewriter.font(13))
+                .tag(article.url)
+        }
+    }
+
+    /// The sidebar context of an article URL — display name, folder, and
+    /// position among its siblings, everything the management menu needs —
+    /// recovered from the book snapshot, since the List-level context menu
+    /// only hands over the row's selection value.
+    private func articleContext(of url: URL)
+        -> (name: String, folder: URL, siblings: [String], index: Int)? {
+        guard let book else { return nil }
+        let path = url.standardizedFileURL.path
+        func context(in articles: [BookArticle], folder: URL)
+            -> (name: String, folder: URL, siblings: [String], index: Int)? {
+            guard let index = articles.firstIndex(where: {
+                $0.url.standardizedFileURL.path == path
+            }) else { return nil }
+            return (articles[index].name, folder,
+                    articles.map { $0.url.lastPathComponent }, index)
+        }
+        if let hit = context(in: book.articles, folder: book.root) { return hit }
+        for chapter in book.chapters {
+            if let hit = context(in: chapter.articles, folder: chapter.url) { return hit }
+        }
+        return nil
+    }
+
+    // MARK: Detail (the writing pane)
+
+    @ViewBuilder
+    private func detail(for book: Book) -> some View {
+        Group {
+            switch session.stage {
+            case .empty:
+                detailPlaceholder(icon: "square.and.pencil", title: "Select an Article",
+                                  message: "Choose an article in the sidebar to write here. ⌃⌘↑ and ⌃⌘↓ move through the book in reading order.")
+            case .editing:
+                BookArticleEditor(session: session,
+                                  derived: derived,
+                                  previewNavigation: $previewNavigation,
+                                  editorJump: $editorJump)
+                    // Hand the article to the menu bar — File ▸ Print… and
+                    // the Share commands — exactly as a document window
+                    // does. No fileURL: "Share Source…" should offer a
+                    // copy, not the live file the book is standing on.
+                    .focusedSceneValue(\.activeDocument,
+                                       ActiveDocument(text: session.text,
+                                                      title: session.title,
+                                                      fileURL: nil,
+                                                      dark: colorScheme == .dark))
+                    // …the mode switch, for the View-menu ⌘1/⌘2/⌘3…
+                    .focusedSceneValue(\.viewModeSelection,
+                                       ViewModeSelection(mode: mode,
+                                                         select: { storedMode = $0.rawValue }))
+                    // …and the article's outline and notes, for the Go
+                    // menu — same navigation as the toolbar menus.
+                    .focusedSceneValue(\.documentNavigation,
+                                       DocumentNavigation(outline: derived.outline,
+                                                          notes: derived.notes,
+                                                          jumpToHeading: { jump(to: $0) },
+                                                          jumpToNote: { jump(to: $0) }))
+            case .handoff:
+                VStack(spacing: 12) {
+                    Image(systemName: "macwindow")
+                        .font(.system(size: 36))
+                        .foregroundStyle(.secondary)
+                    Text("Open in Its Own Window")
+                        .font(Typewriter.font(17))
+                    Text("\u{201C}\(session.title)\u{201D} is open as a document window, and that window owns the file while it stays open. Close it to write here again.")
+                        .font(Typewriter.font(12))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    Button("Show Window") { session.showOwningWindow() }
+                }
+                .padding(24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .unreadable:
+                detailPlaceholder(icon: "exclamationmark.triangle", title: "Could Not Read the Article",
+                                  message: "\u{201C}\(session.title)\u{201D} could not be read. It may have been moved or deleted outside the book.")
             }
         }
+        .background(Typewriter.paper.ignoresSafeArea())
+        // Previous / Next Article, for the menu bar (⌃⌘↑ / ⌃⌘↓) — see
+        // `DocumentCommands`.
+        .focusedSceneValue(\.bookArticleStepper, stepper(for: book))
+        .toolbar { detailToolbar }
+    }
+
+    private func detailPlaceholder(icon: String, title: String, message: String) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 36))
+                .foregroundStyle(.secondary)
+            Text(title)
+                .font(Typewriter.font(17))
+            Text(message)
+                .font(Typewriter.font(12))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: Detail toolbar
+
+    @ToolbarContentBuilder
+    private var detailToolbar: some ToolbarContent {
+        // The same mode switch as a document window. Not `.principal` —
+        // inside a split view that placement fights the column layout.
+        ToolbarItem {
+            Picker("View Mode", selection: modeBinding) {
+                ForEach(DocumentView.Mode.allCases) { mode in
+                    Label(mode.label, systemImage: mode.symbol).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelStyle(.iconOnly)
+            .disabled(session.editingURL == nil)
+            .help("Switch between editing, split and preview")
+        }
+
+        // Walking the book without leaving the keyboard's reach: the menu
+        // commands carry the shortcuts; these are the mouse affordance.
+        ToolbarItem {
+            let stepper = book.map(stepper(for:))
+            ControlGroup {
+                Button {
+                    stepper?.previous()
+                } label: {
+                    Label("Previous Article", systemImage: "chevron.up")
+                }
+                .disabled(stepper?.canPrevious != true)
+                .help("The previous article in reading order (⌃⌘↑)")
+                Button {
+                    stepper?.next()
+                } label: {
+                    Label("Next Article", systemImage: "chevron.down")
+                }
+                .disabled(stepper?.canNext != true)
+                .help("The next article in reading order (⌃⌘↓)")
+            }
+        }
+
+        // Contents / Notes for the article being written — the same
+        // navigation a document window has, off the shared derived-text
+        // cache rather than a parse per toolbar refresh.
+        ToolbarItem {
+            Menu {
+                ForEach(derived.outline, id: \.line) { entry in
+                    Button {
+                        jump(to: entry)
+                    } label: {
+                        Text(String(repeating: "  ", count: max(0, entry.level - 1)) + entry.text)
+                    }
+                }
+            } label: {
+                Label("Contents", systemImage: "list.bullet")
+            }
+            .menuIndicator(.hidden)
+            .disabled(session.editingURL == nil || derived.outline.isEmpty)
+            .help("Jump to a heading")
+        }
+        ToolbarItem {
+            Menu {
+                ForEach(derived.notes, id: \.line) { note in
+                    Button {
+                        jump(to: note)
+                    } label: {
+                        Text(DocumentView.notePreview(note.text))
+                    }
+                }
+            } label: {
+                Label("Notes", systemImage: "note.text")
+            }
+            .menuIndicator(.hidden)
+            .disabled(session.editingURL == nil || derived.notes.isEmpty)
+            .help("Jump to a private author note")
+        }
+
+        // Compile the whole book to a PDF, an EPUB or paper — the same
+        // actions the File menu carries (see `BookOutput`), plus the
+        // menu's one behavior setting at its bottom.
+        ToolbarItem {
+            Menu {
+                Button {
+                    BookOutput.sharePDF()
+                } label: {
+                    Label("Share as PDF", systemImage: "doc.richtext")
+                }
+                Button {
+                    BookOutput.exportPDF()
+                } label: {
+                    Label("Export as PDF…", systemImage: "square.and.arrow.down")
+                }
+                Divider()
+                Button {
+                    BookOutput.exportEPUB()
+                } label: {
+                    Label("Export as EPUB…", systemImage: "book.closed")
+                }
+                Divider()
+                Button {
+                    BookOutput.printBook()
+                } label: {
+                    Label("Print…", systemImage: "printer")
+                }
+                Divider()
+                Toggle("Open Articles in Separate Windows", isOn: $opensInSeparateWindows)
+            } label: {
+                Label("Share", systemImage: "square.and.arrow.up")
+            }
+            .menuIndicator(.hidden)
+            .help("Compile the whole book into a PDF, an EPUB, or print it")
+        }
+    }
+
+    // MARK: Article navigation (Previous / Next, Contents, Notes)
+
+    /// The Previous / Next state and actions for the current selection,
+    /// published to the menu bar and mirrored by the toolbar chevrons.
+    /// Disabled wholesale in the separate-windows mode: with no persistent
+    /// selection there is no "current" article to step from — each press
+    /// would just reopen the first one.
+    private func stepper(for book: Book) -> BookArticleStepper {
+        guard !opensInSeparateWindows else {
+            return BookArticleStepper(canPrevious: false, canNext: false,
+                                      previous: {}, next: {})
+        }
+        let order = BookLibrary.readingOrder(of: book).map(\.url)
+        let index = orderIndex(of: selection, in: order)
+        return BookArticleStepper(
+            canPrevious: index.map { $0 > 0 } ?? !order.isEmpty,
+            canNext: index.map { $0 < order.count - 1 } ?? !order.isEmpty,
+            previous: { step(-1) },
+            next: { step(1) })
+    }
+
+    /// Move the selection through the book's reading order. With nothing
+    /// selected, Next enters the book from the front and Previous from
+    /// the back.
+    private func step(_ delta: Int) {
+        guard let book else { return }
+        let order = BookLibrary.readingOrder(of: book).map(\.url)
+        guard !order.isEmpty else { return }
+        guard let index = orderIndex(of: selection, in: order) else {
+            selection = delta > 0 ? order.first : order.last
+            return
+        }
+        let target = index + delta
+        guard order.indices.contains(target) else { return }
+        selection = order[target]
+    }
+
+    /// `url`'s position in `order`, compared on standardized paths — URL
+    /// equality is representation-sensitive, and the selection and the
+    /// listing needn't spell a path identically.
+    private func orderIndex(of url: URL?, in order: [URL]) -> Int? {
+        guard let path = url?.standardizedFileURL.path else { return nil }
+        return order.firstIndex { $0.standardizedFileURL.path == path }
+    }
+
+    /// Jump to a heading: whichever panes are visible follow it (same
+    /// rules as a document window).
+    private func jump(to entry: OutlineEntry) {
+        if mode != .edit {
+            previewNavigation = PreviewNavigation(id: UUID(), slug: entry.slug)
+        }
+        if mode != .preview {
+            editorJump = EditorJump(id: UUID(), line: entry.line)
+        }
+    }
+
+    /// Jump to a note. Notes never render, so the target is always the
+    /// editor — leaving preview-only mode first when necessary.
+    private func jump(to note: NoteEntry) {
+        if mode == .preview { storedMode = DocumentView.Mode.edit.rawValue }
+        editorJump = EditorJump(id: UUID(), line: note.line)
     }
 
     /// The Rename / Move / Delete menu shared by article rows and chapter
@@ -776,26 +1218,119 @@ struct BookNavigator: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: Actions
+    // MARK: Selection
 
-    /// Re-list the book from disk. Cheap by design, so every mutation just
-    /// calls this instead of patching the snapshot in place.
-    private func reload() {
-        book = BookLibrary.loadBook()
+    /// The selection's side effects, run once per change. In the default
+    /// mode the article loads into the in-place session; in the legacy
+    /// mode the selection is only a gesture — the article opens as its own
+    /// window and the highlight clears.
+    private func selectionChanged(_ url: URL?) {
+        // A performed jump belongs to the article it was aimed at; never
+        // let one replay into the next article's panes.
+        previewNavigation = nil
+        editorJump = nil
+        guard let url else {
+            if !session.select(nil) {
+                // The flush failed: keep the writer on the unsaved article
+                // (its footer is showing the error) instead of abandoning
+                // the buffer.
+                selection = session.editingURL
+            }
+            return
+        }
+        if opensInSeparateWindows {
+            selection = nil
+            openInWindow(url)
+            return
+        }
+        if session.select(url) {
+            lastArticlePath = relativePath(of: url)
+        } else {
+            selection = session.editingURL
+        }
     }
 
-    /// Open an article as a regular document window. The open runs under
-    /// the book root's security scope: the article URL lives inside the
-    /// user-picked folder, and the sandbox only honours it while that scope
-    /// is active. Once the document architecture has the file open it
-    /// maintains access on its own (open-file state plus the recents
-    /// bookmark it keeps), so the scope ends right after.
-    private func open(_ article: BookArticle) {
+    /// `url` relative to the book root — the durable form of "where I was
+    /// writing".
+    private func relativePath(of url: URL) -> String {
+        guard let book else { return "" }
+        let rootPath = book.root.standardizedFileURL.path + "/"
+        let path = url.standardizedFileURL.path
+        return path.hasPrefix(rootPath) ? String(path.dropFirst(rootPath.count)) : ""
+    }
+
+    /// Open an article as a regular document window (the legacy click, the
+    /// context menu, a double-click). If it is the article being edited in
+    /// place, the session saves and steps aside first — the new window
+    /// must never race the session for the file. The open itself runs
+    /// under the book root's security scope; once the document
+    /// architecture has the file open it maintains access on its own, so
+    /// the scope ends right after.
+    private func openInWindow(_ url: URL) {
+        if session.editingURL?.standardizedFileURL.path == url.standardizedFileURL.path {
+            guard session.handOffForExternalOpen() else { return }
+        }
         Task {
             guard let root = BookLibrary.beginAccess() else { return }
             defer { BookLibrary.endAccess(root) }
-            try? await openDocument(at: article.url)
+            try? await openDocument(at: url)
         }
+    }
+
+    // MARK: Actions
+
+    /// Re-list the book from disk and re-point the selection. Cheap by
+    /// design, so every mutation just calls this instead of patching the
+    /// snapshot in place. Selection, in order of preference: the caller's
+    /// `preferred` URL (where a rename / move / create just put things),
+    /// the current selection when it still exists, the remembered
+    /// last-written article, the first article of the book.
+    private func reload(preferring preferred: URL? = nil) {
+        book = BookLibrary.loadBook()
+        guard let book else {
+            selection = nil
+            return
+        }
+        // In the separate-windows mode the sidebar is a launcher, not a
+        // selection: restoring (or auto-selecting) anything would fling
+        // open document windows nobody asked for.
+        guard !opensInSeparateWindows else {
+            selection = nil
+            return
+        }
+        let order = BookLibrary.readingOrder(of: book).map(\.url)
+        func existing(_ url: URL?) -> URL? {
+            orderIndex(of: url, in: order).map { order[$0] }
+        }
+        if let target = existing(preferred) {
+            selection = target
+        } else if let current = existing(selection) {
+            if current != selection { selection = current }
+        } else {
+            let remembered = lastArticlePath.isEmpty
+                ? nil : existing(book.root.appendingPathComponent(lastArticlePath))
+            selection = remembered ?? order.first
+        }
+    }
+
+    /// Run one file operation safely around the in-place editor: save and
+    /// release the edited article first (aborting the operation if the
+    /// save fails — the writer's buffer outranks any management action),
+    /// then reload with the operation's preferred selection. The operation
+    /// receives the pre-operation selection so it can remap it through
+    /// whatever it renamed.
+    private func performManaged(_ operation: (URL?) -> URL?) {
+        let previous = selection
+        guard session.select(nil) else { return }
+        selection = nil
+        reload(preferring: operation(previous))
+        // Everything above runs in one SwiftUI transaction, so when the
+        // net selection value is unchanged — the operation touched some
+        // *other* item — onChange(of: selection) never fires and the
+        // detached session would stay a blank pane under a highlighted
+        // row. Run the reattach side effects by hand; selectionChanged is
+        // idempotent for a selection the session already edits.
+        if selection == previous { selectionChanged(selection) }
     }
 
     private func createChapter() {
@@ -808,18 +1343,24 @@ struct BookNavigator: View {
     private func createArticle() {
         let name = articleName.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty, let folder = articleFolder else { return }
-        _ = BookLibrary.createArticle(named: name, in: folder)
-        reload()
+        performManaged { previous in
+            // Land the writer in the fresh article; on failure stay put.
+            BookLibrary.createArticle(named: name, in: folder) ?? previous
+        }
     }
 
     /// Swap the item with its displayed neighbour and materialize the new
     /// order on disk (see `BookLibrary.renumberPlan`). Impossible moves are
     /// disabled in the menu; the plan's range guard makes them no-ops
-    /// regardless.
+    /// regardless. The selection follows the renames — its own, or its
+    /// chapter's.
     private func move(_ from: Int, to: Int, of siblings: [String], in folder: URL) {
-        _ = BookLibrary.applyRenames(BookLibrary.renumberPlan(siblings, moving: from, to: to),
-                                     in: folder)
-        reload()
+        performManaged { previous in
+            let plan = BookLibrary.renumberPlan(siblings, moving: from, to: to)
+            guard BookLibrary.applyRenames(plan, in: folder) else { return previous }
+            guard let previous else { return nil }
+            return BookLibrary.destination(of: previous, afterRenamesIn: folder, plan: plan)
+        }
     }
 
     /// An empty name is a cancel in spirit — quietly ignored, like the
@@ -827,38 +1368,50 @@ struct BookNavigator: View {
     private func performRename() {
         let stem = renameName.trimmingCharacters(in: .whitespaces)
         guard !stem.isEmpty, let url = renameURL else { return }
-        _ = BookLibrary.renameItem(at: url, toDisplayName: stem)
-        reload()
+        performManaged { previous in
+            guard BookLibrary.renameItem(at: url, toDisplayName: stem) else { return previous }
+            guard let previous else { return nil }
+            // Follow the selection through the rename — the renamed item
+            // itself, or an article inside a renamed chapter.
+            let plan = [(from: url.lastPathComponent,
+                         to: BookLibrary.renamedName(url.lastPathComponent, toDisplayName: stem))]
+            return BookLibrary.destination(of: previous,
+                                           afterRenamesIn: url.deletingLastPathComponent(),
+                                           plan: plan)
+        }
     }
 
     private func performDelete() {
         guard let url = deleteURL else { return }
-        _ = BookLibrary.deleteItem(at: url)
-        reload()
-    }
-
-    /// Compile the whole book and hand it to the same PDF pipeline as a
-    /// document export — title page, chapter pages and per-article pages
-    /// come from `BookLibrary.compile`; the PDF Layout setting applies as
-    /// usual, and the PDF is named after the book.
-    private func compileBook(export: Bool) {
-        guard let compiled = BookLibrary.compileBookSource() else { return }
-        Task {
-            if export {
-                await DocumentExport.exportPDF(source: compiled.source, title: compiled.title,
-                                               dark: colorScheme == .dark)
-            } else {
-                await DocumentExport.sharePDF(source: compiled.source, title: compiled.title,
-                                              dark: colorScheme == .dark)
+        performManaged { previous in
+            // Pick the reading-order neighbor before the file disappears.
+            let neighbor = deletionNeighbor(of: url)
+            guard BookLibrary.deleteItem(at: url) else { return previous }
+            guard let previous else { return nil }
+            let deletedPath = url.standardizedFileURL.path
+            let previousPath = previous.standardizedFileURL.path
+            // The selection (or its whole chapter) went with the delete:
+            // fall to the neighbor so the writer keeps writing.
+            if previousPath == deletedPath || previousPath.hasPrefix(deletedPath + "/") {
+                return neighbor
             }
+            return previous
         }
     }
 
-    /// Read the book and hand it to the EPUB builder (`EPUBExport`) —
-    /// same reading order as the PDF compile, saved where the user
-    /// chooses, named "<book>.epub".
-    private func exportEPUB() {
-        guard let book = BookLibrary.readEPUBBook() else { return }
-        Task { await DocumentExport.exportEPUB(book: book) }
+    /// The article the selection should fall to once everything at or
+    /// under `url` is deleted: the first survivor after the deleted block
+    /// in reading order, else the last one before it.
+    private func deletionNeighbor(of url: URL) -> URL? {
+        guard let book else { return nil }
+        let order = BookLibrary.readingOrder(of: book).map(\.url)
+        let deletedPath = url.standardizedFileURL.path
+        func dies(_ candidate: URL) -> Bool {
+            let path = candidate.standardizedFileURL.path
+            return path == deletedPath || path.hasPrefix(deletedPath + "/")
+        }
+        guard let first = order.firstIndex(where: dies) else { return nil }
+        return order[first...].first { !dies($0) } ?? order[..<first].last
     }
+
 }
