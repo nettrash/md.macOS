@@ -1,0 +1,38 @@
+md is a Markdown editor and live previewer for the Mac. This update (1.2) adds writer mode — a book is an ordinary folder of Markdown files — plus synchronized split scrolling, A4 PDF and EPUB export.
+
+1. ACCESS — NOTHING TO SET UP
+No account, no sign-in, no registration, no in-app purchases, no subscriptions. Every feature works the moment the app launches, so no demo credentials exist or are needed.
+
+No test file is needed: the app ships with sample documents. Open File, Examples and pick any of them (Welcome, Formatting, Tables, Code, Images, Math, Diagrams, Writer Tools).
+
+2. A THREE-MINUTE WALKTHROUGH OF EVERYTHING NEW
+a) File, Examples, "Writer Tools" — a sample document opens. The window shows the Markdown source on the left and the rendered page on the right. Scroll either side: they now scroll together. View, Edit / Split / Preview (Command-1 / Command-2 / Command-3) switches the layout. The word and character count sits at the bottom of the window.
+b) Go menu — jumps to any heading, and lists the author's private notes.
+c) File, Print (Command-P) — prints real A4 pages. File, Export as PDF — saves the same pages through the standard save panel.
+d) File, Examples, "Example Book…" — unpacks a small sample book to a folder you choose and opens the book window: chapters and articles in the sidebar, the selected article beside them, saving as you type. Control-Command-Up / Control-Command-Down move between articles. The green button takes the window full screen.
+e) File, Share Book as PDF / Export Book as PDF… / Export Book as EPUB… / Print Book… — the whole book as one document.
+
+A book is nothing more than a folder the user picks: its subfolders are chapters, its Markdown files are articles. The app creates no hidden files or sidecar metadata.
+
+3. PURPOSE AND AUDIENCE
+Writers, developers and students who keep notes, documentation or a book in plain Markdown files and want to see, print and export the finished page. Nothing is shared, published or hosted anywhere, so there is nothing to moderate, report or block.
+
+4. NETWORK AND EXTERNAL SERVICES
+The app contacts no servers of ours; there are none. It has no analytics, no advertising, no tracking, and it collects no data (the Privacy Nutrition Label answer is "Data Not Collected").
+
+The sandbox carries the network-client entitlement for two reasons. First, WKWebView — which draws the preview and produces the printed page, the PDF and the EPUB — will not launch inside the App Sandbox without it. Second, if a document the user opened references an image by remote URL, the renderer fetches that image so it can be shown and printed. That request goes to the host named in the user's own document. Nothing else is ever sent or fetched.
+
+5. NO DOWNLOADED CODE (2.5.2)
+Math and diagrams (KaTeX, Mermaid, Graphviz, PlantUML) are drawn by open-source JavaScript engines bundled inside the app and served to WKWebView from a private, offline scheme. No executable code is downloaded or updated at runtime, and no interpreted code comes from any server. There are no third-party Swift packages or SDKs.
+
+6. PERMISSIONS
+None are requested: no camera, microphone, location, contacts, calendars, or tracking prompt. The app is sandboxed with user-selected file access (the documents the user opens or saves, and the folder chosen as a book), the network-client entitlement described above, and printing.
+
+7. REGIONAL DIFFERENCES, REGULATED CONTENT
+None. The app behaves identically everywhere, contains no regulated or age-restricted content, and includes no third-party trademarked or copyrighted material beyond the open-source engines named above, which ship under their own permissive licences.
+
+Encryption: ITSAppUsesNonExemptEncryption is false — the app implements no encryption.
+
+Minimum system: macOS 14. The source code and the privacy policy are public.
+
+Thank you for reviewing.

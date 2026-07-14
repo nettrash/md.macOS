@@ -1,0 +1,24 @@
+Version 1.2 — books become a writing room.
+
+WRITER MODE
+• The book window is now a workspace: the structure in a slim sidebar, the article you are writing beside it in Edit, Split or Preview, saved as you type. Full screen leaves nothing on screen but your book.
+• Move through the manuscript from the keyboard: ⌃⌘↑ and ⌃⌘↓ for the previous and next article, ⌘1 / ⌘2 / ⌘3 for the layout.
+• Share, export or print the whole book from the File menu, wherever you are — including the new Print Book — and export it as a standard EPUB 3.
+• Prefer a window per article? A toggle in the book's share menu keeps that behaviour, and a double-click opens any article in its own window at any time.
+
+WRITING
+• Synchronized scrolling in Split: move either pane and the other follows.
+• A live word and character count under every page.
+• The new Go menu gathers the table of contents, your private notes and the book's articles.
+
+PRINT AND PDF
+• Shared and exported PDFs are now real A4 pages from the engine that prints them: pagination is line-aware, so no line of text is sliced at a page boundary, and \newpage starts a fresh page. The earlier one-long-page layout has been retired.
+• Pages come out white with dark ink, whatever theme you write in.
+
+FIXED
+• Full screen works. The windows never declared themselves full-screen capable, so the menu item stayed dimmed and the green button only zoomed.
+• Legacy Cyrillic (Windows-1251) files open as the text they are, instead of mojibake.
+
+CHANGED
+• Document windows no longer carry a toolbar: the menu bar has it all — View for the layout, Go for navigation, File for the book, share, export and print commands.
+• Printed and exported text is set a little smaller, and long code lines wrap instead of being clipped at the edge of the block.

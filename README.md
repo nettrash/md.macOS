@@ -5,9 +5,10 @@
 The simplest Markdown editor for the Mac. Write Markdown on the left, see
 it rendered on the right — or switch to a full-window **Edit** or
 **Preview**. Built in SwiftUI on top of the native `NSDocument` document
-architecture, with a hand-written Markdown renderer. **No third-party
-dependencies, no accounts, no servers** — your files live wherever you
-keep them (on disk, or in iCloud Drive).
+architecture, with a hand-written Markdown renderer. **No third-party Swift
+packages, no accounts, no servers** — your files live wherever you keep them
+(on disk, or in iCloud Drive). The only vendored code is the offline math /
+diagram engines under `md/rich/` (KaTeX, Mermaid, Graphviz, PlantUML).
 
 > This is the native macOS sibling of [**md**](https://github.com/nettrash/md),
 > the iPhone / iPad editor. The two share the same hand-written Markdown
