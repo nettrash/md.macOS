@@ -1,0 +1,1 @@
+Version 1.2 turns md into a book workshop: a full-screen writing room for your chapters, split panes that scroll as one, real A4 PDFs, and EPUB export.

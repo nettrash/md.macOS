@@ -17,7 +17,10 @@ If that already answers your question, you don't need to read the rest.
 ## What we collect
 
 **Nothing.** md has no account to create, no email to register, and no
-telemetry. The app makes no network connections of its own.
+telemetry. It contacts no servers of ours — there are none. The one time
+the app touches the network at all is when a document you opened points at
+an image by remote URL, and the renderer fetches that image so it can be
+shown and printed (see **Permissions** below).
 
 ## Your documents
 
@@ -27,9 +30,16 @@ you choose — locally or in iCloud Drive. We never see them. If you store a
 document in iCloud Drive, it syncs through *your* Apple account under
 Apple's privacy terms, not ours.
 
-The app stores one small preference (your last-used Edit / Split / Preview
-layout, per window) via the standard system preferences store. It never
-leaves your Mac and contains no personal information.
+The app stores a few small settings on your Mac, through the standard
+system preferences and window-restoration stores: your last-used
+Edit / Split / Preview layout, whether a book opens its articles in
+separate windows and — if you use writer mode — a security-scoped bookmark
+to the book folder you chose, plus which article in it you had open last,
+so the book reopens where you left it. A security-scoped bookmark is
+simply how a sandboxed app is permitted to reopen a folder you picked; it
+points at a place on your own Mac and never leaves it. **File ▸ Close
+Book** discards it. None of these settings leave your Mac, and none of
+them contain personal information.
 
 ## Permissions
 
@@ -40,11 +50,19 @@ user-selected file access
 write the documents you explicitly open or save, and nothing else.
 
 The sandbox also carries the network-client entitlement
-(`com.apple.security.network.client`). This is required purely so the
-built-in web renderer that produces the Print / PDF output can start —
-macOS will not launch it inside the sandbox otherwise. md still makes **no
-network connections of its own** and sends no data anywhere; the rendered
-document is built entirely on your Mac from self-contained content.
+(`com.apple.security.network.client`). Two things need it. First, the
+built-in web renderer that draws the preview and produces the Print / PDF /
+EPUB output will not launch inside the App Sandbox without it. Second, if a
+document you open references an image by remote URL
+(`![alt](https://…)`), the renderer fetches that image so it can be shown
+and printed — that request goes straight to the host **your own document
+names**, which sees your IP address exactly as it would if you opened the
+link in a browser. It happens only for documents that contain such a link.
+
+Everything else is built on your Mac: the Markdown renderer, and the math
+and diagram engines (KaTeX, Mermaid, Graphviz, PlantUML) are bundled inside
+the app and run offline. md sends no data anywhere, and contacts no servers
+of ours, because there are none.
 
 ## Children's privacy
 
