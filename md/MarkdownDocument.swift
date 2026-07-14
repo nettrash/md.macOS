@@ -23,6 +23,45 @@ extension UTType {
     static let markdown = UTType(importedAs: "net.daringfireball.markdown")
 }
 
+/// Decoding and encoding for the plain-text files the app edits — shared by
+/// the document architecture (`MarkdownDocument`) and the book workspace's
+/// in-place article editor (`BookArticleSession`), so both sides read and
+/// round-trip a file's bytes identically.
+enum PlainTextCodec {
+
+    /// Try to decode `data` as text, returning the matched encoding.
+    /// UTF-16 is only considered behind an explicit BOM — without one,
+    /// `String(data:encoding:.utf16)` happily pairs up the bytes of many
+    /// legacy single-byte files (BOM-less CP1251 prose, say) into CJK
+    /// mojibake, and the next save would bake that corruption in. The
+    /// BOM'd decode strips the BOM and `data(using: .utf16)` writes one
+    /// back, so such files round-trip. The single-byte trials run most- to
+    /// least-specific; `.isoLatin1` maps every byte, so it round-trips
+    /// arbitrary bytes losslessly as a last resort.
+    static func decode(_ data: Data) -> (text: String, encoding: String.Encoding)? {
+        if data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF]),
+           let text = String(data: data, encoding: .utf16) {
+            return (text, .utf16)
+        }
+        for encoding: String.Encoding in [.utf8, .windowsCP1251, .isoLatin1] {
+            if let text = String(data: data, encoding: encoding) { return (text, encoding) }
+        }
+        return nil
+    }
+
+    /// Encode `text` for saving, preferring the encoding the file was read
+    /// in so a save round-trips instead of silently rewriting the file as
+    /// UTF-8. If the edited text no longer fits it (an emoji typed into a
+    /// Windows-1251 file), upgrade to UTF-8 so the new characters survive —
+    /// and *report* the encoding actually used, so the caller can remember
+    /// the upgrade rather than re-attempting the failed encoding on every
+    /// subsequent autosave.
+    static func encode(_ text: String, preferred: String.Encoding) -> (data: Data, encoding: String.Encoding) {
+        if let data = text.data(using: preferred) { return (data, preferred) }
+        return (Data(text.utf8), .utf8)
+    }
+}
+
 struct MarkdownDocument: FileDocument {
     /// The raw Markdown source. This is the single source of truth the
     /// editor binds to and the previewer renders.
@@ -47,34 +86,22 @@ struct MarkdownDocument: FileDocument {
         guard let data = configuration.file.regularFileContents else {
             throw CocoaError(.fileReadCorruptFile)
         }
-        // Decode strictly. Using the lossy `String(decoding:as:UTF8.self)`
-        // would replace every non-UTF-8 byte with U+FFFD and then bake that
-        // corruption into the file on the next autosave — silent data loss
-        // for a legacy-encoded (Cyrillic, Latin-1, UTF-16) text file opened
-        // in place. Instead try UTF-8 first (the Markdown convention), then
-        // a few common encodings, and remember which one matched.
-        guard let (decoded, enc) = Self.decode(data) else {
+        // Decode strictly (see `PlainTextCodec.decode`). Using the lossy
+        // `String(decoding:as:UTF8.self)` would replace every non-UTF-8
+        // byte with U+FFFD and then bake that corruption into the file on
+        // the next autosave — silent data loss for a legacy-encoded
+        // (Cyrillic, Latin-1, UTF-16) text file opened in place.
+        guard let (decoded, enc) = PlainTextCodec.decode(data) else {
             throw CocoaError(.fileReadInapplicableStringEncoding)
         }
         text = decoded
         encoding = enc
     }
 
-    /// Try to decode `data` as text, returning the matched encoding. The
-    /// list is ordered most- to least-specific; `.isoLatin1` maps every
-    /// byte, so it round-trips arbitrary bytes losslessly as a last resort.
-    private static func decode(_ data: Data) -> (String, String.Encoding)? {
-        for enc: String.Encoding in [.utf8, .utf16, .windowsCP1251, .isoLatin1] {
-            if let s = String(data: data, encoding: enc) { return (s, enc) }
-        }
-        return nil
-    }
-
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-        // Re-encode in the file's original encoding; if the edited text no
-        // longer fits it (e.g. an emoji typed into a Windows-1251 file),
-        // upgrade to UTF-8 so the new characters survive rather than failing.
-        let data = text.data(using: encoding) ?? Data(text.utf8)
-        return FileWrapper(regularFileWithContents: data)
+        // Round-trip in the file's original encoding, upgrading to UTF-8
+        // only when the edited text no longer fits it (see
+        // `PlainTextCodec.encode`).
+        return FileWrapper(regularFileWithContents: PlainTextCodec.encode(text, preferred: encoding).data)
     }
 }
