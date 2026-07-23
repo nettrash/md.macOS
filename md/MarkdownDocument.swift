@@ -21,6 +21,13 @@ extension UTType {
     /// the type is owned by Daring Fireball, not us). It conforms to
     /// `public.plain-text`, so files we save are ordinary text.
     static let markdown = UTType(importedAs: "net.daringfireball.markdown")
+
+    /// PlantUML source (`.puml`). The format is owned by the PlantUML
+    /// project and the system declares no identifier for it, so we import
+    /// one in Info.plist that conforms to `public.plain-text` — a `.puml`
+    /// file is ordinary UTF-8 text and opens in the editor just like a
+    /// `.md` file, with no special handling.
+    static let plantUML = UTType(importedAs: "net.sourceforge.plantuml.puml")
 }
 
 /// Decoding and encoding for the plain-text files the app edits — shared by
@@ -79,8 +86,8 @@ struct MarkdownDocument: FileDocument {
     /// Markdown is the document type we own, but we also read and write
     /// plain text so the app can open and round-trip a `.txt` the user
     /// drops on it without silently rewriting its extension.
-    static var readableContentTypes: [UTType] { [.markdown, .plainText] }
-    static var writableContentTypes: [UTType] { [.markdown, .plainText] }
+    static var readableContentTypes: [UTType] { [.markdown, .plainText, .plantUML] }
+    static var writableContentTypes: [UTType] { [.markdown, .plainText, .plantUML] }
 
     init(configuration: ReadConfiguration) throws {
         guard let data = configuration.file.regularFileContents else {
