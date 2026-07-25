@@ -290,6 +290,11 @@ struct DocumentCommands: Commands {
     @FocusedValue(\.bookArticleStepper) private var articleStepper
     /// Whether a book is open — the Close Book command's enabled state.
     @AppStorage(BookLibrary.bookmarkKey) private var bookBookmark = ""
+    /// The trim size every PDF export from this menu paginates to — the
+    /// document's and (sharing the same app-wide `md.pdfPageSize` key the book
+    /// window's picker reads) the book compile's. Stored as the stable
+    /// `PageSize.id`; `PageSize.named` maps it back and defaults to A4.
+    @AppStorage("md.pdfPageSize") private var pdfPageSizeID = PageSize.a4.id
     /// Opening scenes is an app-level action the environment provides even
     /// inside menu commands — how the book commands reach their window.
     @Environment(\.openWindow) private var openWindow
@@ -340,15 +345,19 @@ struct DocumentCommands: Commands {
             // page being written. The document-scoped Share / Export /
             // Print below keep acting on the frontmost document.
             Button("Share Book as PDF") {
-                BookOutput.sharePDF()
+                BookOutput.sharePDF(pageSize: PageSize.named(pdfPageSizeID))
             }
             .disabled(bookBookmark.isEmpty)
             Button("Export Book as PDF…") {
-                BookOutput.exportPDF()
+                BookOutput.exportPDF(pageSize: PageSize.named(pdfPageSizeID))
             }
             .disabled(bookBookmark.isEmpty)
             Button("Export Book as EPUB…") {
                 BookOutput.exportEPUB()
+            }
+            .disabled(bookBookmark.isEmpty)
+            Button("Export Book as LaTeX…") {
+                BookOutput.exportLaTeX()
             }
             .disabled(bookBookmark.isEmpty)
             Button("Print Book…") {
@@ -439,7 +448,8 @@ struct DocumentCommands: Commands {
                 if let document {
                     Task { await DocumentExport.sharePDF(source: document.text,
                                                          title: document.title,
-                                                         dark: document.dark) }
+                                                         dark: document.dark,
+                                                         pageSize: PageSize.named(pdfPageSizeID)) }
                 }
             }
             .disabled(document == nil)
@@ -448,10 +458,93 @@ struct DocumentCommands: Commands {
                 if let document {
                     Task { await DocumentExport.exportPDF(source: document.text,
                                                           title: document.title,
-                                                          dark: document.dark) }
+                                                          dark: document.dark,
+                                                          pageSize: PageSize.named(pdfPageSizeID)) }
                 }
             }
             .disabled(document == nil)
+
+            // The trim size both PDF actions above paginate to. A Picker in a
+            // menu renders as a submenu of checkable sizes — the platform's
+            // size-picker idiom — and the choice is remembered across launches
+            // (and shared with the book window's PDF compile). Not tied to a
+            // focused document: it also governs the book PDF above, so it stays
+            // available whenever the menu is.
+            Picker("PDF Page Size", selection: $pdfPageSizeID) {
+                ForEach(PageSize.all) { size in
+                    Text(size.label).tag(size.id)
+                }
+            }
+
+            // One self-contained .html — the rendered page with its diagrams
+            // and formulas baked in, opening anywhere with no engines beside
+            // it. Like its neighbours it takes no key equivalent: ⌘-anything
+            // free is scarce, and these are deliberate, occasional actions.
+            Button("Export as HTML…") {
+                if let document {
+                    Task { await DocumentExport.exportHTML(source: document.text,
+                                                           title: document.title,
+                                                           dark: document.dark) }
+                }
+            }
+            .disabled(document == nil)
+
+            // The document as a single-unit EPUB (see
+            // DocumentExport.exportDocumentEPUB): its title comes from the
+            // front-matter `title:` or the file name, so `document.title` (the
+            // editor's base name) is passed as the fallback. No `dark:` — a
+            // reflowing book owns its own theme.
+            Button("Export as EPUB…") {
+                if let document {
+                    Task { await DocumentExport.exportDocumentEPUB(source: document.text,
+                                                                   fileName: document.title) }
+                }
+            }
+            .disabled(document == nil)
+
+            // The one export that keeps the mathematics editable: every
+            // other path turns a formula into a picture or into KaTeX
+            // markup, while the .tex hands back the `$…$` the author wrote.
+            // No theme argument, because a .tex has no light or dark.
+            Button("Export as LaTeX…") {
+                if let document {
+                    Task { await DocumentExport.exportLaTeX(source: document.text,
+                                                            title: document.title) }
+                }
+            }
+            .disabled(document == nil)
+
+            // The document as a `.textbundle` (text.md + info.json + assets/).
+            // `fileURL` is passed so referenced local images beside the saved
+            // document can be copied into assets/; pure string work plus a few
+            // small reads, the await is only the save panel's.
+            Button("Export as TextBundle…") {
+                if let document {
+                    Task { await DocumentExport.exportTextBundle(source: document.text,
+                                                                 fileURL: document.fileURL,
+                                                                 title: document.title) }
+                }
+            }
+            .disabled(document == nil)
+
+            // One diagram → one standalone .svg. A submenu lists the document's
+            // diagram blocks (by engine and a snippet of the source); math is
+            // not here — KaTeX renders it as HTML+CSS, not SVG, so there is no
+            // vector to export. Disabled when the document has no diagrams.
+            // Parsed fresh each menu build, the same cheap line scan the Go
+            // menu's Contents / Notes already pay per rebuild.
+            let diagrams = document.map { DiagramSVG.diagrams(inSource: $0.text) } ?? []
+            Menu("Export Diagram as SVG…") {
+                ForEach(diagrams, id: \.ordinal) { diagram in
+                    Button(diagram.menuTitle) {
+                        if let document {
+                            Task { await DocumentExport.exportDiagramSVG(
+                                source: document.text, title: document.title, diagram: diagram) }
+                        }
+                    }
+                }
+            }
+            .disabled(diagrams.isEmpty)
         }
     }
 }
