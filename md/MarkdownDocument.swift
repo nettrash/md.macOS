@@ -28,6 +28,31 @@ extension UTType {
     /// file is ordinary UTF-8 text and opens in the editor just like a
     /// `.md` file, with no special handling.
     static let plantUML = UTType(importedAs: "net.sourceforge.plantuml.puml")
+
+    /// Graphviz DOT source (`.gv`). Like PlantUML it is ordinary UTF-8 text
+    /// with no system-declared identifier, so we import one conforming to
+    /// `public.plain-text`.
+    ///
+    /// Only `.gv` is claimed, deliberately — DOT's other extension, `.dot`,
+    /// is already system-declared as `com.microsoft.word.dot` (a Word
+    /// template, which does *not* conform to plain text). Claiming it too
+    /// would leave the extension ambiguous and could offer md as a handler
+    /// for real Word templates, so a `.dot` file has to be renamed `.gv` to
+    /// open. Fenced ```dot blocks inside a Markdown document are unaffected.
+    static let graphvizDOT = UTType(importedAs: "org.graphviz.dot")
+
+    /// TextBundle (`.textbundle`) — a directory *package* carrying `text.md`,
+    /// `info.json` and an `assets/` folder. It conforms to `com.apple.package`,
+    /// which is what makes the document architecture hand us a *directory*
+    /// `FileWrapper` to read the text out of (see `MarkdownDocument.init`).
+    /// Read-only for the app (not in `writableContentTypes`): the document is
+    /// only the text, so saving one back would drop its `assets/` — forbidden.
+    static let textBundle = UTType(importedAs: "org.textbundle.package")
+
+    /// TextPack (`.textpack`) — a zipped TextBundle. It conforms to
+    /// `public.zip-archive`, so it arrives as ordinary file bytes we unzip in
+    /// memory. Read-only for the same reason as `.textbundle`.
+    static let textPack = UTType(importedAs: "org.textbundle.pack")
 }
 
 /// Decoding and encoding for the plain-text files the app edits — shared by
@@ -86,13 +111,51 @@ struct MarkdownDocument: FileDocument {
     /// Markdown is the document type we own, but we also read and write
     /// plain text so the app can open and round-trip a `.txt` the user
     /// drops on it without silently rewriting its extension.
-    static var readableContentTypes: [UTType] { [.markdown, .plainText, .plantUML] }
-    static var writableContentTypes: [UTType] { [.markdown, .plainText, .plantUML] }
+    ///
+    /// TextBundle / TextPack are **readable only** — deliberately absent from
+    /// `writableContentTypes`: a bundle can carry an `assets/` folder this
+    /// single-`String` document has no room for, so saving one back would drop
+    /// its images (house rule: nothing the author has vanishes). Opening one
+    /// imports its `text.md` for viewing / editing; producing a bundle is the
+    /// explicit Export action (see `DocumentExport.exportTextBundle`).
+    static var readableContentTypes: [UTType] {
+        [.markdown, .plainText, .plantUML, .graphvizDOT, .textBundle, .textPack]
+    }
+    static var writableContentTypes: [UTType] { [.markdown, .plainText, .plantUML, .graphvizDOT] }
 
     init(configuration: ReadConfiguration) throws {
+        // A `.textbundle` is a directory *package*, so the architecture hands
+        // us a directory `FileWrapper` (its `regularFileContents` is nil): read
+        // the bundle's `text.md` out of it. `ReadConfiguration.file` is a
+        // `FileWrapper` all the same — only the assumption that it wraps a
+        // regular file changes.
+        if configuration.file.isDirectory {
+            guard let (decoded, enc) = TextBundle.textFromBundle(configuration.file) else {
+                throw CocoaError(.fileReadCorruptFile)
+            }
+            text = decoded
+            encoding = enc
+            return
+        }
+
         guard let data = configuration.file.regularFileContents else {
             throw CocoaError(.fileReadCorruptFile)
         }
+
+        // A `.textpack` is that bundle zipped — unzip in memory and read its
+        // nested `text.md`. A pack that won't unzip is a genuinely corrupt
+        // file, so it is *not* fed to the plain-text decoder below: that path's
+        // Latin-1 last resort maps any byte, so it would "succeed" and show the
+        // raw zip as mojibake instead of reporting the real error.
+        if configuration.contentType.conforms(to: .textPack) {
+            guard let (decoded, enc) = TextBundle.textFromPack(data) else {
+                throw CocoaError(.fileReadCorruptFile)
+            }
+            text = decoded
+            encoding = enc
+            return
+        }
+
         // Decode strictly (see `PlainTextCodec.decode`). Using the lossy
         // `String(decoding:as:UTF8.self)` would replace every non-UTF-8
         // byte with U+FFFD and then bake that corruption into the file on
