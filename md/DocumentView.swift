@@ -90,6 +90,18 @@ struct DocumentView: View {
     /// renders; the panes register themselves on it).
     @State private var scrollSync = ScrollSync()
 
+    /// Zen mode: the window goes full screen and shows one centred column of
+    /// text and nothing else. Per-window (SceneStorage), so one window can be
+    /// in Zen while another is not. `zenReading` is Zen's own two-state
+    /// switch — false to write (the editor), true to read (the preview).
+    @SceneStorage("md.zen") private var zenActive = false
+    @SceneStorage("md.zenReading") private var zenReading = false
+    /// Zen's controls (the write/read switch and the exit affordance) fade in
+    /// on mouse movement and out again when the pointer rests, so a still
+    /// screen is only the text. Shown once on entering, to teach them.
+    @State private var zenControlsShown = true
+    @State private var zenHideTask: Task<Void, Never>?
+
     enum Mode: String, CaseIterable, Identifiable {
         case edit, split, preview
         var id: String { rawValue }
@@ -127,14 +139,23 @@ struct DocumentView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            content
-            Divider()
-            footer
+        Group {
+            if zenActive {
+                zenBody
+            } else {
+                VStack(spacing: 0) {
+                    content
+                    Divider()
+                    footer
+                }
+                .frame(minWidth: 480, minHeight: 320)
+            }
         }
             .background(Typewriter.paper.ignoresSafeArea())
-            .frame(minWidth: 480, minHeight: 320)
             .fullScreenCapable()
+            // Drive the window in and out of full screen with Zen, and drop
+            // out of Zen if the user leaves full screen by other means.
+            .background(ZenFullScreen(active: zenActive, onExit: { zenActive = false }))
             // Hand the frontmost document to the menu-bar commands so
             // File ▸ Print… / Share… act on it (see `DocumentCommands`).
             .focusedSceneValue(\.activeDocument,
@@ -142,10 +163,23 @@ struct DocumentView: View {
                                               title: baseName,
                                               fileURL: fileURL,
                                               dark: colorScheme == .dark))
-            // …the mode switch, so the View-menu ⌘1/⌘2/⌘3 drive it…
+            // …the mode switch, so the View-menu ⌘1/⌘2/⌘3 drive it. In Zen
+            // the same toggles flip Zen's write/read state instead of the
+            // windowed layout: Edit and Split write, Preview reads.
             .focusedSceneValue(\.viewModeSelection,
-                               ViewModeSelection(mode: effectiveMode,
-                                                 select: { storedMode = $0.rawValue }))
+                               ViewModeSelection(
+                                mode: zenActive ? (zenReading ? .preview : .edit) : effectiveMode,
+                                select: { mode in
+                                    if zenActive {
+                                        zenReading = (mode == .preview)
+                                    } else {
+                                        storedMode = mode.rawValue
+                                    }
+                                }))
+            // …the Zen toggle, for View ▸ Zen Mode (⇧⌘↩)…
+            .focusedSceneValue(\.zenMode,
+                               ZenModeCommand(active: zenActive,
+                                              toggle: { zenActive.toggle() }))
             // …and the outline and notes, for the Go menu.
             .focusedSceneValue(\.documentNavigation,
                                DocumentNavigation(outline: derived.outline,
@@ -157,6 +191,87 @@ struct DocumentView: View {
             .task(id: document.text) {
                 derived = await derived.refreshed(from: document.text)
             }
+            // Reveal the Zen controls briefly whenever Zen turns on, so they
+            // are seen before they fade.
+            .onChange(of: zenActive) { _, on in
+                if on { revealZenControls() } else { zenHideTask?.cancel() }
+            }
+    }
+
+    // MARK: - Zen mode
+
+    /// The Zen layout: paper everywhere, and one centred column — two-thirds
+    /// of the window wide, with a border of roughly four percent above and
+    /// below — holding the editor (writing) or the preview (reading). The
+    /// write/read switch and an exit control float at the top, fading with
+    /// the pointer.
+    private var zenBody: some View {
+        GeometryReader { geo in
+            Group {
+                if zenReading {
+                    previewPane
+                } else {
+                    editorPane
+                }
+            }
+            .frame(width: geo.size.width * (2.0 / 3.0),
+                   height: geo.size.height * 0.92)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)   // centre it on the paper
+            .overlay(alignment: .top) { zenControls }
+            .contentShape(Rectangle())
+            .onContinuousHover { phase in
+                if case .active = phase { revealZenControls() }
+            }
+        }
+    }
+
+    /// Zen's floating controls: a write/read switch and a way out, in a
+    /// translucent capsule that fades unless the pointer is moving.
+    private var zenControls: some View {
+        HStack(spacing: 2) {
+            zenSwitch(reading: false, symbol: Mode.edit.symbol, help: "Write")
+            zenSwitch(reading: true, symbol: Mode.preview.symbol, help: "Read")
+            Divider().frame(height: 14)
+            Button {
+                zenActive = false
+            } label: {
+                Image(systemName: "arrow.down.right.and.arrow.up.left")
+            }
+            .buttonStyle(.plain)
+            .help("Exit Zen Mode")
+            .padding(.horizontal, 6)
+        }
+        .padding(6)
+        .background(.regularMaterial, in: Capsule())
+        .padding(.top, 10)
+        .opacity(zenControlsShown ? 1 : 0)
+        .allowsHitTesting(zenControlsShown)
+        .animation(.easeInOut(duration: 0.3), value: zenControlsShown)
+    }
+
+    private func zenSwitch(reading: Bool, symbol: String, help: String) -> some View {
+        Button {
+            zenReading = reading
+        } label: {
+            Image(systemName: symbol)
+                .foregroundStyle(zenReading == reading ? Color.accentColor : Color.secondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+
+    /// Show the Zen controls, then fade them once the pointer has rested for
+    /// a couple of seconds. Each call restarts the timer, so continuous
+    /// movement keeps them up.
+    private func revealZenControls() {
+        zenControlsShown = true
+        zenHideTask?.cancel()
+        zenHideTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            if !Task.isCancelled { zenControlsShown = false }
+        }
     }
 
     /// The author's counters, book-workspace style: live words and
@@ -275,5 +390,73 @@ struct DocumentView: View {
         guard !collapsed.isEmpty else { return "(empty note)" }
         guard collapsed.count > 50 else { return collapsed }
         return collapsed.prefix(50).trimmingCharacters(in: .whitespaces) + "…"
+    }
+}
+
+// MARK: - Zen full-screen driver
+
+/// Keeps the hosting window's full-screen state in step with Zen mode.
+/// Entering Zen takes the window full screen; leaving Zen brings it back.
+/// And if the user leaves full screen by other means — the green button,
+/// ⌃⌘F, the Escape the system offers — Zen is dropped too, via `onExit`, so
+/// the two never disagree.
+///
+/// The `toggling` flag distinguishes a transition *we* asked for (whose
+/// end-notification is expected and must not be read as the user leaving)
+/// from one the user drove. `.fullScreenPrimary` is already on the window
+/// (see `fullScreenCapable`), so `toggleFullScreen` is available.
+private struct ZenFullScreen: NSViewRepresentable {
+    let active: Bool
+    let onExit: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(onExit: onExit) }
+
+    func makeNSView(context: Context) -> NSView { NSView() }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        context.coordinator.onExit = onExit
+        // The window isn't attached during the first update either — defer to
+        // the next runloop turn, when the view has landed in its window.
+        DispatchQueue.main.async {
+            context.coordinator.sync(desired: active, window: view.window)
+        }
+    }
+
+    final class Coordinator {
+        var onExit: () -> Void
+        private weak var observedWindow: NSWindow?
+        private var toggling = false
+
+        init(onExit: @escaping () -> Void) { self.onExit = onExit }
+
+        func sync(desired: Bool, window: NSWindow?) {
+            guard let window else { return }
+            observe(window)
+            let isFull = window.styleMask.contains(.fullScreen)
+            guard desired != isFull, !toggling else { return }
+            toggling = true
+            window.toggleFullScreen(nil)
+        }
+
+        private func observe(_ window: NSWindow) {
+            guard observedWindow !== window else { return }
+            observedWindow = window
+            let center = NotificationCenter.default
+            center.addObserver(forName: NSWindow.didEnterFullScreenNotification,
+                               object: window, queue: .main) { [weak self] _ in
+                self?.toggling = false
+            }
+            center.addObserver(forName: NSWindow.didExitFullScreenNotification,
+                               object: window, queue: .main) { [weak self] _ in
+                guard let self else { return }
+                if self.toggling {
+                    // The exit we asked for finished.
+                    self.toggling = false
+                } else {
+                    // The user left full screen while in Zen — leave Zen too.
+                    self.onExit()
+                }
+            }
+        }
     }
 }
