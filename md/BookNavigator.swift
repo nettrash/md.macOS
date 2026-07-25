@@ -39,8 +39,9 @@
 //  The window's share menu compiles the whole book — a title page, then
 //  every chapter heading and article on its own page — into one Markdown
 //  source (see `BookLibrary.compile`) and hands it to the same PDF
-//  pipeline a document export uses; Export as EPUB… builds the same
-//  reading order as an EPUB 3 instead (see `EPUBExport`).
+//  pipeline a document export uses; Export as EPUB… and Export as LaTeX…
+//  walk the same reading order with its structure intact instead (see
+//  `EPUBExport` and `LaTeXExport`), so a chapter stays a chapter.
 //
 
 import SwiftUI
@@ -519,21 +520,27 @@ enum BookLibrary {
         return String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1)
     }
 
-    /// Read the open book for the EPUB export — display names and sources
-    /// in the same reading order as the PDF compile, but kept structured:
-    /// the EPUB gives every article and chapter heading its own file (see
-    /// `EPUBExport`). Returns nil after alerting when there is no book or
-    /// an article cannot be read.
-    static func readEPUBBook() -> EPUBBook? {
+    /// Read the open book in structure — display names and sources in the
+    /// same reading order as the PDF compile, but with the chapter and
+    /// article boundaries kept rather than flattened into one stream.
+    ///
+    /// Both structured exports want exactly this: the EPUB gives every
+    /// article and chapter heading its own file (see `EPUBExport`), and the
+    /// `.tex` turns the same boundaries into `\chapter` and `\section`.
+    /// `failure` is the export naming itself in the alert, since the reader
+    /// is the only thing that can tell the user *which* article it could not
+    /// read. Returns nil after alerting when there is no book or an article
+    /// cannot be read.
+    static func readStructuredBook(failure: String) -> EPUBBook? {
         guard let book = loadBook(), let root = beginAccess() else {
-            presentError("Could not export EPUB",
+            presentError(failure,
                          informative: "No book is open, or the book folder is not accessible.")
             return nil
         }
         defer { endAccess(root) }
         func read(_ article: BookArticle) -> EPUBBook.Article? {
             guard let text = readArticle(article.url) else {
-                presentError("Could not export EPUB",
+                presentError(failure,
                              informative: "The article \"\(article.name)\" could not be read.")
                 return nil
             }
@@ -607,18 +614,23 @@ enum BookOutput {
     }
 
     /// The title page, chapter headings and articles in reading order —
-    /// each starting a fresh A4 page — through the share picker.
-    static func sharePDF() {
+    /// each starting a fresh page — through the share picker. `pageSize` is
+    /// the caller's remembered trim choice (see `PageSize`): the book compile
+    /// is the surface that needs it most — no print-on-demand service accepts
+    /// A4 interiors.
+    static func sharePDF(pageSize: PageSize = .a4) {
         guard flushEditor(), let compiled = BookLibrary.compileBookSource() else { return }
         Task { await DocumentExport.sharePDF(source: compiled.source,
-                                             title: compiled.title, dark: false) }
+                                             title: compiled.title, dark: false,
+                                             pageSize: pageSize) }
     }
 
     /// The same compile, saved where the user chooses as "<book>.pdf".
-    static func exportPDF() {
+    static func exportPDF(pageSize: PageSize = .a4) {
         guard flushEditor(), let compiled = BookLibrary.compileBookSource() else { return }
         Task { await DocumentExport.exportPDF(source: compiled.source,
-                                              title: compiled.title, dark: false) }
+                                              title: compiled.title, dark: false,
+                                              pageSize: pageSize) }
     }
 
     /// The same compile, straight to the print panel.
@@ -631,8 +643,23 @@ enum BookOutput {
     /// The book as an EPUB 3 (see `EPUBExport`) — same reading order as
     /// the PDF compile, saved where the user chooses as "<book>.epub".
     static func exportEPUB() {
-        guard flushEditor(), let book = BookLibrary.readEPUBBook() else { return }
+        guard flushEditor(),
+              let book = BookLibrary.readStructuredBook(failure: "Could not export EPUB")
+        else { return }
         Task { await DocumentExport.exportEPUB(book: book) }
+    }
+
+    /// The book as one `book`-class .tex — each chapter a `\chapter`, each
+    /// article a `\section`, in the same reading order as the PDF compile
+    /// and the EPUB. It reads the book the EPUB's way rather than the PDF's
+    /// because the structure has to survive: the compiled PDF source is one
+    /// flat Markdown stream, which is exactly the chapter and article
+    /// boundaries `\chapter` and `\section` are made of.
+    static func exportLaTeX() {
+        guard flushEditor(),
+              let book = BookLibrary.readStructuredBook(failure: "Could not export LaTeX")
+        else { return }
+        Task { await DocumentExport.exportBookLaTeX(book: book) }
     }
 }
 
@@ -656,6 +683,12 @@ struct BookNavigator: View {
     /// storage: there is exactly one book window, and the writer's chosen
     /// layout should survive a relaunch.
     @AppStorage("md.bookViewMode") private var storedMode = DocumentView.Mode.split.rawValue
+    /// The trim size the book's PDF compile paginates to — A5 for a booklet,
+    /// 6×9"/5×8"/5.5×8.5" for a print-on-demand paperback interior. One
+    /// app-wide choice (the same `md.pdfPageSize` key the document share menu
+    /// reads), remembered across launches; stored as the stable `PageSize.id`,
+    /// which `PageSize.named` maps back and defaults to A4.
+    @AppStorage("md.pdfPageSize") private var pdfPageSizeID = PageSize.a4.id
     @Environment(\.openDocument) private var openDocument
     /// Captured so a compiled book's PDF matches this window's appearance,
     /// exactly as a document export matches its window's.
@@ -1065,20 +1098,36 @@ struct BookNavigator: View {
         ToolbarItem {
             Menu {
                 Button {
-                    BookOutput.sharePDF()
+                    BookOutput.sharePDF(pageSize: PageSize.named(pdfPageSizeID))
                 } label: {
                     Label("Share as PDF", systemImage: "doc.richtext")
                 }
                 Button {
-                    BookOutput.exportPDF()
+                    BookOutput.exportPDF(pageSize: PageSize.named(pdfPageSizeID))
                 } label: {
                     Label("Export as PDF…", systemImage: "square.and.arrow.down")
+                }
+                // The trim size the two PDF compiles use — a booklet (A5) or a
+                // print-on-demand paperback (6×9", …) instead of A4. A Picker
+                // in a menu is the submenu size-picker idiom; the choice is
+                // remembered and shared with the document share menu.
+                Picker(selection: $pdfPageSizeID) {
+                    ForEach(PageSize.all) { size in
+                        Text(size.label).tag(size.id)
+                    }
+                } label: {
+                    Label("PDF Page Size", systemImage: "rectangle.portrait")
                 }
                 Divider()
                 Button {
                     BookOutput.exportEPUB()
                 } label: {
                     Label("Export as EPUB…", systemImage: "book.closed")
+                }
+                Button {
+                    BookOutput.exportLaTeX()
+                } label: {
+                    Label("Export as LaTeX…", systemImage: "function")
                 }
                 Divider()
                 Button {
