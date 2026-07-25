@@ -1,4 +1,7 @@
-Version 1.3 - richer pages, and more ways to take them with you.
+Version 1.3 - a calmer place to write, richer pages, and more ways out.
+
+ZEN MODE
+- Go full screen and md leaves nothing on the window but your text: one centred column, two-thirds of the screen wide, on bare paper. A quiet switch flips between writing and reading, and fades away when you stop moving. Just you and the page. (View menu, Zen Mode, Shift-Command-Return.)
 
 NEW ON THE PAGE
 - Chemistry. Write a reaction or a formula with the mhchem notation - \ce for equations, \pu for physical units - and it typesets with its subscripts, charges and reaction arrows the way a textbook sets them, anywhere math already works.

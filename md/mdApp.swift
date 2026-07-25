@@ -142,6 +142,27 @@ extension FocusedValues {
     }
 }
 
+/// The frontmost document window's Zen mode — full-screen, one centred
+/// column, nothing else — for the View-menu toggle. `active` drives the
+/// menu item's checkmark; `toggle` flips it. Published only by a document
+/// window (not the book workspace), so the item is disabled elsewhere.
+struct ZenModeCommand: Equatable {
+    var active: Bool
+    let toggle: () -> Void
+    static func == (a: Self, b: Self) -> Bool { a.active == b.active }
+}
+
+private struct ZenModeCommandKey: FocusedValueKey {
+    typealias Value = ZenModeCommand
+}
+
+extension FocusedValues {
+    var zenMode: ZenModeCommand? {
+        get { self[ZenModeCommandKey.self] }
+        set { self[ZenModeCommandKey.self] = newValue }
+    }
+}
+
 // MARK: - Document outline & notes, for the Go menu
 
 // The parser's entry types live in the file shared verbatim with the iOS
@@ -284,6 +305,8 @@ struct DocumentCommands: Commands {
     /// The frontmost editing surface's mode switch (document window or the
     /// book's writing pane) — drives the View-menu ⌘1/⌘2/⌘3.
     @FocusedValue(\.viewModeSelection) private var viewMode
+    /// The frontmost document window's Zen mode toggle (View ▸ Zen Mode).
+    @FocusedValue(\.zenMode) private var zenMode
     /// …and its outline and notes — the Go menu's content.
     @FocusedValue(\.documentNavigation) private var navigation
     /// The book window's Previous / Next Article actions (⌃⌘↑ / ⌃⌘↓).
@@ -384,6 +407,17 @@ struct DocumentCommands: Commands {
                 .keyboardShortcut(KeyEquivalent(Character(mode.commandKey)), modifiers: .command)
                 .disabled(viewMode == nil)
             }
+            // Zen mode — the whole window becomes one centred column of text,
+            // full screen, with nothing else. In Zen the Edit / Preview
+            // toggles above (⌘1 / ⌘3) switch between writing and reading; ⌘2
+            // (Split) folds to writing, since a single column has no second
+            // pane. Document-only (the book workspace publishes no zenMode).
+            Toggle("Zen Mode", isOn: Binding(
+                get: { zenMode?.active ?? false },
+                set: { _ in zenMode?.toggle() }
+            ))
+            .keyboardShortcut(.return, modifiers: [.command, .shift])
+            .disabled(zenMode == nil)
             Divider()
         }
 

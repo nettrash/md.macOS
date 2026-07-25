@@ -12,6 +12,14 @@ a scheme post-action (`agvtool bump`) and is not tracked here.
 ### Added
 
 
+- **Zen mode.** A new View ▸ Zen Mode (⇧⌘↩) takes the window full screen and
+  leaves nothing on it but your text: one column, two-thirds of the screen
+  wide, centred with a small margin above and below, on the bare paper.
+  A quiet switch — floating at the top, fading when the pointer rests —
+  flips between writing (the editor) and reading (the rendered page); the
+  Edit and Preview shortcuts (⌘1 / ⌘3) do the same. Leaving full screen by
+  any means drops Zen with it. It is per-window, so one window can be in Zen
+  while another is not.
 - **Chemical equations.** Math written with `\ce{…}` — the chemistry
   notation from `mhchem` — now typesets as proper chemistry: `$\ce{H2SO4 + 2
   OH- -> SO4^2- + 2 H2O}$` sets its subscripts, charges and reaction arrow
@@ -292,6 +300,17 @@ a scheme post-action (`agvtool bump`) and is not tracked here.
   bundle's own `assets/` pictures are not displayed: those refs render as the
   broken images they point at while you edit the prose. The round-trip is the
   words; the pictures travel inside the file, not on the page.
+
+### Changed
+
+
+- **The menus, tidied.** Writer mode now has its own top-level **Book** menu —
+  New, Open, Show and Close a book, and (once one is open) Share, Print and
+  an **Export Book** submenu of formats — gathered out of the File menu. The
+  document's own **Share** and **Export** commands are each collected into a
+  single submenu (Export holding PDF, HTML, EPUB, LaTeX, TextBundle, the
+  diagram-to-SVG list, and the page-size choice), and the diagram export is
+  disabled when the document has no diagram to export.
 
 ### Fixed
 
