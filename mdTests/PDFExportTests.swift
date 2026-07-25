@@ -35,9 +35,9 @@ final class PDFExportTests: XCTestCase {
         // size, with nothing lost off the end.
         let renderer = WebRenderer()
         try await renderer.load(html: MarkdownHTML.document(paragraphs(60), title: "a4", dark: false, export: true))
-        let data = try await renderer.makeA4PDF(title: "a4")
+        let data = try await renderer.makePDF(title: "a4")
 
-        let document = try XCTUnwrap(PDFDocument(data: data), "makeA4PDF should produce a readable PDF")
+        let document = try XCTUnwrap(PDFDocument(data: data), "makePDF should produce a readable PDF")
         XCTAssertGreaterThan(document.pageCount, 1, "A long document must paginate")
         for index in 0..<document.pageCount {
             let bounds = try XCTUnwrap(document.page(at: index)).bounds(for: .mediaBox)
@@ -71,7 +71,7 @@ final class PDFExportTests: XCTestCase {
         """
         let renderer = WebRenderer()
         try await renderer.load(html: MarkdownHTML.document(source, title: "book", dark: false, export: true))
-        let data = try await renderer.makeA4PDF(title: "book")
+        let data = try await renderer.makePDF(title: "book")
 
         let document = try XCTUnwrap(PDFDocument(data: data))
         XCTAssertEqual(document.pageCount, 3, "One page per `\\newpage` section")
@@ -93,12 +93,38 @@ final class PDFExportTests: XCTestCase {
         let source = "Before the code.\n\n```\n\(line)\n```\n\nAfter the code."
         let renderer = WebRenderer()
         try await renderer.load(html: MarkdownHTML.document(source, title: "code", dark: false, export: true))
-        let data = try await renderer.makeA4PDF(title: "code")
+        let data = try await renderer.makePDF(title: "code")
 
         let document = try XCTUnwrap(PDFDocument(data: data))
         let text = pageTexts(of: document).joined(separator: "\n")
         XCTAssertTrue(text.contains("ENDMARKER"),
                       "The tail of a long code line must wrap onto the page, not be clipped away")
+    }
+
+    func testChosenPageSizeReachesTheRenderedPdfMediaBoxAndA4StaysDefault() async throws {
+        // The strongest proof the trim choice flows the whole way through:
+        // render a real one-page PDF and read the page's MediaBox back — a
+        // plain heading, so the offscreen web view settles at once (no rich
+        // engines), and one renderer serves both renders.
+        let renderer = WebRenderer()
+        try await renderer.load(
+            html: MarkdownHTML.document("# Page", title: "Page", dark: false, export: true))
+
+        func mediaBox(_ size: CGSize) async throws -> CGRect {
+            let data = try await renderer.makePDF(title: "Page", pageSize: size)
+            let pdf = try XCTUnwrap(PDFDocument(data: data))
+            return try XCTUnwrap(pdf.page(at: 0)).bounds(for: .mediaBox)
+        }
+
+        // A chosen 6×9" trim reaches the page rect…
+        let sixByNine = try await mediaBox(PageSize.sixByNine.size)
+        XCTAssertEqual(sixByNine.width, 432, accuracy: 1)
+        XCTAssertEqual(sixByNine.height, 648, accuracy: 1)
+        // …and `makePDF`'s default is still real A4 — existing behaviour intact.
+        let a4 = try await mediaBox(WebRenderer.a4PageSize)
+        XCTAssertEqual(a4.width, 595.2, accuracy: 1)
+        XCTAssertEqual(a4.height, 841.8, accuracy: 1)
+        withExtendedLifetime(renderer) {}
     }
 
     func testEPUBRoundTripsThroughUnzip() async throws {

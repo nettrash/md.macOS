@@ -1,31 +1,37 @@
-md is a Markdown editor and live previewer built for the Mac. Write plain Markdown on one side and watch the finished page take shape on the other — then print it, export it as a PDF, or turn a folder of chapters into a whole book.
+md is a Markdown editor and live previewer built for the Mac. Write plain Markdown on one side and watch the finished page take shape on the other — then print it, export it, or turn a folder of chapters into a whole book.
 
 WRITE AND SEE
 • Edit, Split and Preview layouts (⌘1 / ⌘2 / ⌘3). In Split, the two panes scroll as one, so the passage you are reading is the paragraph you are writing.
-• The preview is the printed page: one renderer draws the preview, the printout and the PDF — the same layout, set for paper (white pages, dark ink, print-sized type).
-• Headings, lists, task lists, tables, quotes, code blocks, links and images — plus LaTeX math, Mermaid graphs and PlantUML diagrams, all drawn on your Mac by engines built into the app.
-• The Go menu lists every heading and jumps both panes to it.
-• Private author notes — an HTML comment on its own line whose text begins with “note:” — are listed in the Go menu and never appear in the preview, the PDF or the printout.
+• Zen mode (⇧⌘↩): full screen, your text in one centred column and nothing else — with a switch between writing and reading.
+• The preview is the printed page: one renderer draws the preview, the printout and the PDF, the same layout set for paper.
+• Headings, lists, task lists, tables, quotes, code, links and images — plus footnotes, and metadata front matter (YAML or TOML) recognised and kept out of the page.
+• LaTeX math and mhchem chemistry, Mermaid graphs, Graphviz and PlantUML diagrams — all drawn on your Mac by engines built into the app.
+• Code fenced with a language reads with its keywords, comments and strings set apart, in a quiet palette that matches the page rather than a bright editor theme.
+• Paste a table straight from a spreadsheet into a csv or tsv block and md draws it — the first row the header, number columns lined up on the right.
+• The Go menu lists every heading and jumps both panes to it. Private author notes — an HTML comment on its own line whose text begins with the word note — are listed in the Go menu and never appear in the preview, the PDF or the printout.
 • A live word and character count sits under every page.
 
 PRINT AND EXPORT
-• Print or export real A4 pages. Breaks fall between lines, never through them, and \newpage starts a fresh page wherever you decide.
-• Share the rendered PDF from any window, or export it through the standard save panel.
+• Print or export real A4 pages — or A5, US Letter, US Legal, or a paperback trim size for a book bound for print. Breaks fall between lines, and \newpage starts a fresh page wherever you decide.
+• Export as HTML: one self-contained file that opens anywhere, diagrams as drawings and formulas as real, selectable text.
+• Export as LaTeX: a .tex file where your mathematics stays mathematics, ready to paste into a paper.
+• Export a diagram as a standalone .svg vector, or the whole document — or a single one — as a standard EPUB 3.
+• Share the rendered PDF from any window, export it through the standard save panel, or open and export TextBundle and TextPack, the Markdown-with-images container.
 
 WRITER MODE: BOOKS
 • A book is simply a folder: its subfolders are chapters, its Markdown files are articles, ordered by name.
-• The book window keeps the structure in a slim sidebar and the article you are writing beside it — Edit, Split or Preview — saving as you type. Take it full screen for a writing room with nothing in it but your book.
+• The book window keeps the structure in a slim sidebar and the article you are writing beside it — Edit, Split or Preview — saving as you type. Take it full screen for a writing room with nothing but your book.
 • Walk the manuscript from the keyboard (⌃⌘↑ / ⌃⌘↓). Rename, reorder and delete chapters and articles in place; the order is written back to the file names, so it stays true in the Finder.
-• Compile the whole book into one PDF, print it, or export it as a standard EPUB 3 with a proper table of contents — math and diagrams travel with it as images.
+• Compile the whole book into one PDF at the page size you choose, print it, or export it as a standard EPUB 3 with a proper table of contents — math and diagrams travel with it as images.
 
 A REAL MAC APP
-• Document-based: open, save, autosave, versions, rename, duplicate and move come from macOS itself. Your files stay ordinary .md, .markdown or .txt files, in the encoding they arrived in.
+• Document-based: open, save, autosave, versions, rename, duplicate and move come from macOS itself. Your files stay ordinary .md, .markdown or .txt, in the encoding they arrived in — and md also opens .puml, .gv, .textbundle and .textpack.
 • Native menus, keyboard shortcuts and full screen throughout — no toolbar clutter.
 • Built-in examples, including a small sample book, show everything the app can do.
 
 PRIVATE BY DESIGN
 • No accounts, no sign-in, no analytics, no tracking, no ads.
 • Your documents stay where you put them: on your Mac, or in your own iCloud Drive.
-• Math and diagrams are rendered on your Mac. The only thing md fetches from the network is an image your own document points at by URL.
+• Everything is rendered on your Mac. The only thing md fetches from the network is an image your own document points at by URL.
 
-Written in Swift and SwiftUI, with no accounts and no servers. The only outside code in the app is the open-source engines that draw the math and the diagrams — KaTeX, Mermaid, Graphviz and PlantUML — bundled in, and run on your Mac. The source code is public.
+Written in Swift and SwiftUI, no accounts and no servers. The only outside code is the open-source engines that draw the math, chemistry, diagrams and code — KaTeX, mhchem, Mermaid, Graphviz, PlantUML and highlight.js — bundled in and run on your Mac. The source is public.
