@@ -36,7 +36,7 @@
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.productivity</string>
     <key>NSHumanReadableCopyright</key>
-    <string>© 2026 nettrash (Ivan Alekseev). MIT licensed.</string>
+    <string>© 2026 nettrash. MIT licensed.</string>
 
     <!--
         Document handling. The app owns Markdown and opens plain text as an
