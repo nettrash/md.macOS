@@ -115,4 +115,4 @@ scheme post-action running `agvtool bump`.
 
 ## License
 
-MIT — see [LICENSE](LICENSE). © 2026 nettrash (Ivan Alekseev).
+MIT — see [LICENSE](LICENSE). © 2026 nettrash.
