@@ -149,21 +149,30 @@ struct PageSize: Identifiable, Equatable {
 /// unit-testable.
 ///
 /// Only the three *diagram* engines qualify — Mermaid, Graphviz and PlantUML
-/// each render to an inline `<svg>`. Math does **not**: KaTeX lays a formula
-/// out as HTML + CSS, never SVG, so a formula has no vector to export and is
-/// deliberately never offered.
+/// each render to an inline `<svg>` — plus the ```plot fence, which is a real
+/// `<svg>` in the markup before any script runs and so needs no engine at all.
+/// Math does **not**: KaTeX lays a formula out as HTML + CSS, never SVG, so a
+/// formula has no vector to export and is deliberately never offered.
 enum DiagramSVG {
 
     /// One diagram the document offers for SVG export, in document order.
     struct Diagram: Equatable {
         /// 0-based position among the document's diagrams — the same order
-        /// `querySelectorAll('pre.mermaid, div.plantuml, div.graphviz')`
-        /// reports the rendered containers in, so the capture step pulls the
-        /// matching `<svg>` back out by this index. (The DOM query and this
-        /// list both walk the document in order and both see only diagrams,
-        /// so they pair up index-for-index — the same document-order pairing
-        /// the EPUB path relies on between its rich containers and their
-        /// snapshots, minus the formulas neither of us can export.)
+        /// `querySelectorAll(DiagramSVG.domSelector)` — today
+        /// `pre.mermaid, div.plantuml, div.graphviz, div.plot` — reports the
+        /// rendered containers in, so the capture step pulls the matching
+        /// `<svg>` back out by this index. The DOM query and this list both
+        /// walk the document in order and both see exactly the four kinds
+        /// `classify` names, so they pair up index-for-index; a kind in one and
+        /// not the other shifts every later figure onto the wrong source.
+        ///
+        /// It is *like* the document-order pairing the EPUB path relies on
+        /// between its rich containers and their snapshots, but it is not the
+        /// same set, in both directions: this one has no formulas (KaTeX lays a
+        /// formula out as HTML, so there is no vector to export) and it does
+        /// have `div.plot`, which the EPUB rich set deliberately omits because a
+        /// plot is already an `<svg>` and needs no snapshot. Do not derive one
+        /// selector from the other.
         let ordinal: Int
         let kind: Kind
         /// The Graphviz layout program (`dot` / `neato` / …) for a
@@ -174,7 +183,7 @@ enum DiagramSVG {
         /// menu. Empty when the source has no non-blank line.
         let label: String
 
-        enum Kind: String { case mermaid, plantuml, graphviz }
+        enum Kind: String { case mermaid, plantuml, graphviz, plot }
 
         /// The engine's display name, naming the Graphviz layout when it is
         /// not the default `dot` (a `neato` graph reads quite differently).
@@ -185,6 +194,7 @@ enum DiagramSVG {
             case .graphviz:
                 if let engine, engine != "dot" { return "Graphviz (\(engine))" }
                 return "Graphviz"
+            case .plot: return "Plot"
             }
         }
 
@@ -202,9 +212,10 @@ enum DiagramSVG {
     ///  • a raw `.puml` / `.gv` document is one diagram — the whole file (see
     ///    `MarkdownHTML.document`, which renders it without parsing Markdown);
     ///  • otherwise every fenced block whose info string names Mermaid,
-    ///    PlantUML or a Graphviz layout — including one nested in a block
-    ///    quote, which `MarkdownHTML` renders by recursing into the quote, so
-    ///    the walk recurses too and the quoted diagram keeps its place.
+    ///    PlantUML, a Graphviz layout or `plot` — including one nested in a
+    ///    block quote, which `MarkdownHTML` renders by recursing into the
+    ///    quote, so the walk recurses too and the quoted diagram keeps its
+    ///    place.
     /// Math fences and every other code block are skipped: a formula is not
     /// SVG, and ordinary code is not a diagram.
     static func diagrams(inSource source: String) -> [Diagram] {
@@ -240,8 +251,8 @@ enum DiagramSVG {
     }
 
     /// Classify a fence info string the way `MarkdownHTML.renderBlock` does —
-    /// lower-cased, the same three families, the same Graphviz alias table —
-    /// or nil for anything that is not a diagram (math, csv, plain code).
+    /// lower-cased, the same families, the same Graphviz alias table — or nil
+    /// for anything that is not a diagram (math, csv, plain code).
     /// Reusing `MarkdownHTML.graphvizEngines` keeps the two in lockstep: a
     /// layout added there is offered here without a second edit.
     private static func classify(_ language: String?) -> (kind: Diagram.Kind, engine: String?)? {
@@ -252,10 +263,23 @@ enum DiagramSVG {
             return (.plantuml, nil)
         case let lang where MarkdownHTML.graphvizEngines[lang] != nil:
             return (.graphviz, MarkdownHTML.graphvizEngines[lang])
+        case "plot":
+            // A plot is a diagram here even though no engine draws it: the
+            // renderer already put a finished `<svg>` in the markup, so the
+            // capture below reads a real vector out of the DOM without any
+            // engine having to run. It must be in this list, and `div.plot`
+            // must be in `domSelector`, or every later diagram exports as the
+            // wrong figure.
+            return (.plot, nil)
         default:
             return nil
         }
     }
+
+    /// The DOM query that finds the rendered containers `diagrams(inSource:)`
+    /// describes, in the same document order — the two must name the same set
+    /// or the ordinals pair a figure with another figure's source.
+    static let domSelector = "pre.mermaid, div.plantuml, div.graphviz, div.plot"
 
     /// The first non-empty line of `source`, trimmed and capped so one long
     /// line can't dwarf the menu. Purely cosmetic — a human reads it, nothing
@@ -511,6 +535,15 @@ final class WebRenderer: NSObject, WKNavigationDelegate {
     /// containers and must be changed together: a class one of them misses
     /// either skips the snapshot pass entirely or shifts every later image
     /// onto the wrong element.
+    ///
+    /// `.plot` is deliberately **not** in that set. These containers exist to
+    /// photograph a drawing the markup does not contain — a Mermaid `<pre>`
+    /// holds diagram source, a maths span holds TeX — whereas a plot is
+    /// already an `<svg>` element in the body this scan runs over. Measured on
+    /// the default figure: 16,888 bytes of vector against a 169,108-byte PNG
+    /// of the same thing, and a plot-only document never has to open a web
+    /// view at all. The one cost is the EPUB manifest property `svg`, which
+    /// `EPUBExport.opf` now writes.
     func richElements() async -> [(rect: CGRect, isMath: Bool)] {
         let height = max(WebRenderer.pageSize.height, await contentHeight())
         hostPanel.setContentSize(CGSize(width: WebRenderer.pageSize.width, height: height))
@@ -573,7 +606,9 @@ final class WebRenderer: NSObject, WKNavigationDelegate {
     /// Taken from the live DOM *after* `data-md-render-complete`, so what is
     /// captured is the finished page: Mermaid, Graphviz and PlantUML have
     /// already become inline `<svg>`, and KaTeX has already expanded its
-    /// formulas into markup. Nothing is left to run, so every `<script>` and
+    /// formulas into markup. (A `div.plot` needed no engine and no wait — it
+    /// was inline `<svg>` in the bytes this page was loaded from.) Nothing is
+    /// left to run, so every `<script>` and
     /// every stylesheet `<link>` into `rich/` is removed — the exported file
     /// must not reach for an engine that will not be there. They go in the
     /// DOM, not by string surgery on the serialized markup.
@@ -600,8 +635,9 @@ final class WebRenderer: NSObject, WKNavigationDelegate {
     }
 
     /// Read the rendered root `<svg>` of the diagram at `index` (0-based, in
-    /// document order among `pre.mermaid`, `div.plantuml`, `div.graphviz` —
-    /// the diagram half of the selector `richElements` uses) straight out of
+    /// document order under `DiagramSVG.domSelector` — the diagram half of the
+    /// selector `richElements` uses, plus `div.plot`, which `richElements`
+    /// deliberately omits because a plot is already an `<svg>`) straight out of
     /// the finished DOM as outerHTML. That is the real vector, not a
     /// rasterised snapshot.
     ///
@@ -611,7 +647,7 @@ final class WebRenderer: NSObject, WKNavigationDelegate {
     func diagramSVG(at index: Int) async -> String? {
         let script = """
         (function () {
-          var nodes = document.querySelectorAll('pre.mermaid, div.plantuml, div.graphviz');
+          var nodes = document.querySelectorAll('\(DiagramSVG.domSelector)');
           var el = nodes[\(index)];
           if (!el) return null;
           var svg = el.querySelector('svg');
@@ -983,8 +1019,14 @@ enum DocumentExport {
 
     // MARK: - Diagram → SVG export
 
-    /// A diagram produced no vector — its engine hit a syntax error or timed
-    /// out, so md-init.js left the block as source text with no `<svg>`.
+    /// A diagram produced no vector, so there is nothing to save.
+    ///
+    /// For the three engine-drawn kinds that means the engine hit a syntax
+    /// error or timed out and md-init.js left the block as source text with no
+    /// `<svg>`. A `div.plot` has no engine to fail: it is empty or holds a
+    /// `<pre>` only when the fence itself was empty or unparseable, in which
+    /// case `Plot.renderPlot` has already put the reason in front of the reader
+    /// and this alert is the second half of the same answer.
     private struct DiagramCaptureError: LocalizedError {
         var errorDescription: String? {
             "This diagram couldn't be captured — it may have failed to render."
@@ -996,12 +1038,18 @@ enum DocumentExport {
     /// rendered `<svg>` out of the finished DOM, wrap it as a standalone
     /// `.svg`, and save it where the user picks. `diagram` came from
     /// `DiagramSVG.diagrams(inSource:)`, so its `ordinal` is the diagram's
-    /// document-order position — the same order the DOM reports the containers.
+    /// document-order position among `DiagramSVG.domSelector`'s four container
+    /// kinds — `pre.mermaid`, `div.plantuml`, `div.graphviz` and `div.plot` —
+    /// which is the order the DOM reports them in. A plot needs none of the
+    /// engines this page waits for; it goes through the same offscreen render
+    /// only because the ordinals are counted in the finished DOM.
     ///
     /// `dark: false`: a `.svg` file carries no screen theme, so it is captured
     /// from the light render (Mermaid bakes its own colours into the SVG;
-    /// Graphviz/PlantUML draw explicit ink). `export: true` only to keep the
-    /// same page the other captures use — it changes nothing in the vector.
+    /// Graphviz/PlantUML draw explicit ink; a plot's ink is `currentColor`,
+    /// which a standalone file resolves to its own default, so the light render
+    /// is not a choice made against it). `export: true` only to keep the same
+    /// page the other captures use — it changes nothing in the vector.
     ///
     /// The sandbox needs nothing new: the destination is a URL the user picked
     /// in an `NSSavePanel`, which `files.user-selected.read-write` already
@@ -1455,8 +1503,12 @@ enum EPUBExport {
         let navEntries = outline.isEmpty
             ? [NavEntry(title: title, file: contentFile)]
             : outline.map { NavEntry(title: $0.text, file: "\(contentFile)#\($0.slug)") }
+        // The body is the finished XHTML, rich blocks already replaced by
+        // their snapshots, so an `<svg>` still in it is one the markup itself
+        // carries — today that means a ```plot fence.
         let opfString = opf(title: title, identifier: stableIdentifier(forTitle: title),
-                            modified: modified, units: [unit.file], images: images.map(\.file))
+                            modified: modified, units: [unit.file], images: images.map(\.file),
+                            svgUnits: body.contains("<svg") ? [0] : [])
         var out: [(name: String, data: Data)] = [
             ("mimetype", Data(mimetype.utf8)),
             ("META-INF/container.xml", Data(containerXML.utf8)),
@@ -1476,6 +1528,12 @@ enum EPUBExport {
     /// container matches whatever else its tag carries: MarkdownHTML names
     /// the layout program in a `data-engine` attribute after the class
     /// (`<div class="graphviz" data-engine="neato">`).
+    ///
+    /// `class="plot"` is deliberately absent: a ```plot fence is finished
+    /// `<svg>` by the time this runs, so there is nothing for an engine to
+    /// typeset and a plot-only document skips the snapshot pass — and the web
+    /// view — entirely. `replacingRichElements` omits it for the same reason,
+    /// and `EPUBExport.opf` pays the one price that choice carries.
     static func containsRichContent(_ html: String) -> Bool {
         html.contains("class=\"md-mathi\"") || html.contains("class=\"md-mathd\"")
             || html.contains("class=\"mermaid\"") || html.contains("class=\"plantuml\"")
@@ -1508,6 +1566,12 @@ enum EPUBExport {
     /// order `WebRenderer.richElements` reports — with its image tag.
     /// The elements' inner text is HTML-escaped by the renderer, so the
     /// first matching close tag is always the element's own.
+    ///
+    /// `plot` is deliberately not in the alternation, matching
+    /// `WebRenderer.richElements` and `containsRichContent`: a plot is already
+    /// an `<svg>`, so replacing it with a photograph of itself would cost 10×
+    /// the bytes and lose the vector. It travels into the book as the markup
+    /// the renderer returned.
     ///
     /// `[^>]*` after the class attribute is what lets a Graphviz container
     /// match: its tag carries the layout program as well
@@ -1616,12 +1680,22 @@ enum EPUBExport {
         return "urn:uuid:" + groups.joined(separator: "-")
     }
 
+    /// The package document.
+    ///
+    /// `svgUnits` names the content documents that hold an `<svg>` element.
+    /// EPUB 3 requires the reserved manifest property `svg` on each of them —
+    /// EPUBCheck reports OPF-014 without it and the book is invalid. Until the
+    /// ```plot fence no EPUB this app produced had ever contained one (Mermaid,
+    /// Graphviz and PlantUML all arrive as PNG snapshots), so every item was
+    /// emitted bare and still is when the set is empty.
     static func opf(title: String, identifier: String, modified: String,
-                    units: [String], images: [String]) -> String {
+                    units: [String], images: [String],
+                    svgUnits: Set<Int> = []) -> String {
         var manifest = "<item id=\"nav\" href=\"nav.xhtml\" media-type=\"application/xhtml+xml\" properties=\"nav\"/>\n"
         manifest += "<item id=\"css\" href=\"style.css\" media-type=\"text/css\"/>\n"
         for (index, file) in units.enumerated() {
-            manifest += "<item id=\"u\(index)\" href=\"\(file)\" media-type=\"application/xhtml+xml\"/>\n"
+            let properties = svgUnits.contains(index) ? " properties=\"svg\"" : ""
+            manifest += "<item id=\"u\(index)\" href=\"\(file)\" media-type=\"application/xhtml+xml\"\(properties)/>\n"
         }
         for (index, file) in images.enumerated() {
             manifest += "<item id=\"i\(index)\" href=\"\(file)\" media-type=\"image/png\"/>\n"
@@ -1666,10 +1740,14 @@ enum EPUBExport {
         var zip = EPUBZipWriter()
         zip.add("mimetype", Data(mimetype.utf8))
         zip.add("META-INF/container.xml", Data(containerXML.utf8))
+        // Same rule per article: whichever units still hold an `<svg>` of
+        // their own (a ```plot fence) carry `properties="svg"`.
+        let svgUnits = Set(units.indices.filter { units[$0].xhtml.contains("<svg") })
         zip.add("OEBPS/content.opf", Data(opf(title: title, identifier: identifier,
                                               modified: modified,
                                               units: units.map(\.file),
-                                              images: images.map { $0.file }).utf8))
+                                              images: images.map { $0.file },
+                                              svgUnits: svgUnits).utf8))
         zip.add("OEBPS/nav.xhtml", Data(nav(title: title, entries: entries).utf8))
         zip.add("OEBPS/style.css", Data(stylesheet().utf8))
         for unit in units { zip.add("OEBPS/\(unit.file)", Data(unit.xhtml.utf8)) }

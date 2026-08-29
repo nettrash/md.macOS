@@ -925,6 +925,13 @@ final class mdTests: XCTestCase {
         XCTAssertFalse(mathFence.contains("highlight.min.js"))
         let csv = MarkdownHTML.document("```csv\na,b\n1,2\n```", title: "t", dark: false)
         XCTAssertFalse(csv.contains("highlight.min.js"))
+        // ```plot joins the list: it is drawn by `Plot.renderPlot` into an
+        // `<svg>` before any script runs, so it is neither code to highlight nor
+        // a reason to load an engine.
+        let plot = MarkdownHTML.document("```plot\nx: -10..10\nsin(x)\n```", title: "t", dark: false)
+        XCTAssertFalse(plot.contains("highlight.min.js"))
+        XCTAssertFalse(plot.contains("language-plot"))
+        XCTAssertTrue(plot.contains("<div class=\"plot\"><svg"))
     }
 
     func testHTMLPlainDocumentDoesNotLoadHighlightEngine() {

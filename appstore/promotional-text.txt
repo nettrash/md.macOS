@@ -1,1 +1,1 @@
-Version 1.3 adds a full-screen Zen writing mode, chemistry, highlighted code, Graphviz and footnotes — plus HTML, LaTeX, EPUB and SVG exports and a choice of page size.
+Version 1.4 turns a plot block of formulas into a chart md draws itself, with no engine behind it — and every document reopens in the layout you last had it in.

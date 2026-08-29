@@ -127,6 +127,41 @@ final class PDFExportTests: XCTestCase {
         withExtendedLifetime(renderer) {}
     }
 
+    func testPlotIsPaintedIntoThePDF() async throws {
+        // A ```plot is a vector figure the moment the renderer returns, with no
+        // engine to wait on — so the print pipeline paints it like any other
+        // markup. Its `<text>` elements are real text, which is why the title and
+        // an axis label come back out of the finished PDF: proof the figure was
+        // drawn, not merely reserved space for.
+        let source = """
+        Before the figure.
+
+        ```plot
+        x: -10..10
+        y: -2..2
+        title: PlotTitleMarker
+        xlabel: XAxisMarker
+        sin(x) * exp(-abs(x)/5)
+        ```
+
+        After the figure.
+        """
+        let renderer = WebRenderer()
+        try await renderer.load(html: MarkdownHTML.document(source, title: "plot", dark: false, export: true))
+        let data = try await renderer.makePDF(title: "plot")
+
+        let document = try XCTUnwrap(PDFDocument(data: data), "makePDF should produce a readable PDF")
+        XCTAssertEqual(document.pageCount, 1, "one short page")
+        let bounds = try XCTUnwrap(document.page(at: 0)).bounds(for: .mediaBox)
+        XCTAssertEqual(bounds.width, WebRenderer.pageSize.width, accuracy: 1)
+        let text = pageTexts(of: document).joined(separator: "\n")
+        XCTAssertTrue(text.contains("Before the figure"), "the prose above the figure")
+        XCTAssertTrue(text.contains("After the figure"), "the prose below it — nothing clipped")
+        XCTAssertTrue(text.contains("PlotTitleMarker"),
+                      "the figure's own title must be painted, as vector text")
+        XCTAssertTrue(text.contains("XAxisMarker"), "and its axis label with it")
+    }
+
     func testEPUBRoundTripsThroughUnzip() async throws {
         // Assemble a small real EPUB (plain articles — no rich content, so
         // no web view) and check it with the system's unzip: an intact

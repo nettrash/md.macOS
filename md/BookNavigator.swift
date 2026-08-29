@@ -682,7 +682,24 @@ struct BookNavigator: View {
     /// The workspace's Edit / Split / Preview mode. App storage, not scene
     /// storage: there is exactly one book window, and the writer's chosen
     /// layout should survive a relaunch.
+    ///
+    /// Deliberately **one** mode for the whole book, and deliberately not the
+    /// per-file memory a document window keeps (`md.viewModeMemory`, see
+    /// `ViewMode.swift`): stepping ⌃⌘↓ through chapters must not keep changing
+    /// the layout under a writer, least of all flipping them into Preview on
+    /// the chapter they were about to write. The two stores stay disjoint —
+    /// this window never writes a per-file entry.
     @AppStorage("md.bookViewMode") private var storedMode = DocumentView.Mode.split.rawValue
+
+    /// The pane a navigation jump has brought on screen, if one has.
+    ///
+    /// Not persisted, and deliberately not `storedMode`. `md.bookViewMode` is
+    /// `@AppStorage`, i.e. one app-wide setting for the whole book, so writing
+    /// a jump into it meant that reading a single note permanently changed the
+    /// layout the book comes back in — a worse version of the same mistake the
+    /// document window made per file. A jump moves you; it is not a choice of
+    /// layout, and only a deliberate pick is remembered.
+    @State private var navigationMode: DocumentView.Mode?
     /// The trim size the book's PDF compile paginates to — A5 for a booklet,
     /// 6×9"/5×8"/5.5×8.5" for a print-on-demand paperback interior. One
     /// app-wide choice (the same `md.pdfPageSize` key the document share menu
@@ -733,9 +750,24 @@ struct BookNavigator: View {
     @State private var deleteName = ""
     @State private var deleteIsChapter = false
 
-    private var mode: DocumentView.Mode { .init(rawValue: storedMode) ?? .split }
+    /// The book's remembered layout — the preference, ignoring any jump.
+    private var preferredMode: DocumentView.Mode { .init(rawValue: storedMode) ?? .split }
+
+    /// The layout actually on screen: a navigation jump overrides the
+    /// preference for as long as it lasts, without recording anything.
+    private var mode: DocumentView.Mode {
+        ViewModeRule.displayedMode(preferred: preferredMode, navigation: navigationMode, isWide: true)
+    }
+
+    /// Every deliberate pick goes through here, and clears the jump: choosing
+    /// a layout ends the detour and is what gets remembered.
+    private func select(_ mode: DocumentView.Mode) {
+        navigationMode = nil
+        storedMode = mode.rawValue
+    }
+
     private var modeBinding: Binding<DocumentView.Mode> {
-        Binding(get: { mode }, set: { storedMode = $0.rawValue })
+        Binding(get: { mode }, set: { select($0) })
     }
 
     var body: some View {
@@ -951,7 +983,8 @@ struct BookNavigator: View {
                 BookArticleEditor(session: session,
                                   derived: derived,
                                   previewNavigation: $previewNavigation,
-                                  editorJump: $editorJump)
+                                  editorJump: $editorJump,
+                                  navigationMode: navigationMode)
                     // Hand the article to the menu bar — File ▸ Print… and
                     // the Share commands — exactly as a document window
                     // does. No fileURL: "Share Source…" should offer a
@@ -964,7 +997,7 @@ struct BookNavigator: View {
                     // …the mode switch, for the View-menu ⌘1/⌘2/⌘3…
                     .focusedSceneValue(\.viewModeSelection,
                                        ViewModeSelection(mode: mode,
-                                                         select: { storedMode = $0.rawValue }))
+                                                         select: { select($0) }))
                     // …and the article's outline and notes, for the Go
                     // menu — same navigation as the toolbar menus.
                     .focusedSceneValue(\.documentNavigation,
@@ -1204,7 +1237,11 @@ struct BookNavigator: View {
     /// Jump to a note. Notes never render, so the target is always the
     /// editor — leaving preview-only mode first when necessary.
     private func jump(to note: NoteEntry) {
-        if mode == .preview { storedMode = DocumentView.Mode.edit.rawValue }
+        // A jump, not a preference: bring the editor on screen without touching
+        // the book's remembered layout. See `navigationMode`.
+        if let nudge = ViewModeRule.navigationNudge(displayed: mode, wants: .edit) {
+            navigationMode = nudge
+        }
         editorJump = EditorJump(id: UUID(), line: note.line)
     }
 
@@ -1315,10 +1352,25 @@ struct BookNavigator: View {
     /// under the book root's security scope; once the document
     /// architecture has the file open it maintains access on its own, so
     /// the scope ends right after.
+    ///
+    /// The window it opens is a plain document window — so it would pick up
+    /// per-file view-mode memory through the ordinary `DocumentView` path
+    /// unless told not to, and it is told not to: book articles are exempt
+    /// from that memory on all three ports, one mode per book, whichever
+    /// window an article is read in. `BookArticleOpens.mark` is the marker
+    /// the landing window claims (see `ViewMode.swift`); the iPhone port
+    /// marks the same way, one line before `DocumentSceneOpener.open`.
+    ///
+    /// What the reader sees here barely changes — a Mac window is always
+    /// wide, so an unknown article resolved to Split, which is also the
+    /// default an exempt window keeps. What changes is that a book of two
+    /// hundred chapters can no longer evict a reader's real documents from
+    /// a two-hundred-entry list, and that the three apps now agree.
     private func openInWindow(_ url: URL) {
         if session.editingURL?.standardizedFileURL.path == url.standardizedFileURL.path {
             guard session.handOffForExternalOpen() else { return }
         }
+        BookArticleOpens.mark(url)
         Task {
             guard let root = BookLibrary.beginAccess() else { return }
             defer { BookLibrary.endAccess(root) }
