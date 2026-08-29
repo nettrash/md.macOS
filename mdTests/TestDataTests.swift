@@ -3,10 +3,16 @@
 //  mdTests
 //
 //  Fixture-driven tests over the shared TestData corpus (mirrored in the
-//  iOS / macOS / Android repos). Every fixture must parse and render, and
-//  each per-feature file must carry the construct its name promises, so a
-//  fixture edit that loses a feature fails here rather than silently
-//  weakening the corpus.
+//  iOS / macOS / Android / VS Code repos). Every fixture must parse and
+//  render, and each per-feature file must carry the construct its name
+//  promises, so a fixture edit that loses a feature fails here rather than
+//  silently weakening the corpus.
+//
+//  Fifteen of the sixteen fixtures are byte-identical in all four repos, and
+//  a difference in one of them is drift to be fixed. `test.md` is the
+//  deliberate exception: being the kitchen-sink document, it names the
+//  platform it runs on and the command that builds it, so those few lines
+//  differ per repo on purpose. Do not unify them.
 //
 
 import XCTest
@@ -124,15 +130,17 @@ final class TestDataTests: XCTestCase {
 
     func testExamplesBundleIsCompleteAndRenders() throws {
         // The Examples folder ships in the *app* bundle (the tests are
-        // hosted, so Bundle.main is the app). The eight root files are the
+        // hosted, so Bundle.main is the app). The root files are the
         // File ▸ Examples menu, in name order.
         let bundle = Bundle.main
+        let expectedRoots = [
+            "01-Welcome", "02-Formatting", "03-Tables", "04-Code",
+            "05-Images", "06-Math", "07-Diagrams", "08-Plots",
+            "09-Writer Tools",
+        ]
         let roots = bundle.urls(forResourcesWithExtension: "md", subdirectory: "Examples")?
             .map { $0.deletingPathExtension().lastPathComponent }
-        XCTAssertEqual(roots?.sorted(), [
-            "01-Welcome", "02-Formatting", "03-Tables", "04-Code",
-            "05-Images", "06-Math", "07-Diagrams", "08-Writer Tools",
-        ])
+        XCTAssertEqual(roots?.sorted(), expectedRoots)
 
         // The example book: every article at its exact place in the tree,
         // since Example Book… copies the folder verbatim.
@@ -156,7 +164,11 @@ final class TestDataTests: XCTestCase {
                                                                includingPropertiesForKeys: nil))
             .compactMap { $0 as? URL }
             .filter { $0.pathExtension.lowercased() == "md" }
-        XCTAssertEqual(all.count, 13, "stray or missing .md under Examples")
+        // Derived from the two rosters above rather than written out, so that
+        // adding an example is one edit and not two — a literal here went
+        // stale the moment `08-Plots.md` arrived.
+        XCTAssertEqual(all.count, expectedRoots.count + articles.count,
+                       "stray or missing .md under Examples")
         for url in all {
             let source = try String(contentsOf: url, encoding: .utf8)
             let name = url.lastPathComponent

@@ -131,6 +131,70 @@ final class RichRenderTests: XCTestCase {
         }
     }
 
+    // MARK: ```plot — a figure in a live WebView with no engine loaded at all
+
+    /// The claim worth pinning for the ```plot fence: the drawing is in the
+    /// markup *before any script runs*, so a real WKWebView shows a real `<svg>`
+    /// with polylines, tick labels and a title while loading **no engine**.
+    /// Every other rich block in this file needs KaTeX, Mermaid, Viz.js or the
+    /// TeaVM PlantUML engine to become anything; this one needs nothing, which
+    /// is what makes every export path work for free.
+    func testPlotRendersInWebViewWithNoEngineLoaded() async throws {
+        let source = """
+        ```plot
+        x: -10..10
+        y: -2..2
+        title: Damped oscillation
+        xlabel: x
+        ylabel: amplitude
+        envelope = exp(-abs(x)/5)
+        sin(x) * exp(-abs(x)/5)
+        ```
+        """
+        let html = MarkdownHTML.document(source, title: "plot", dark: false)
+        // Before the web view is even created: the SVG is already in the bytes.
+        XCTAssertTrue(html.contains("<div class=\"plot\"><svg"),
+                      "the figure must be in the markup, not produced by a script")
+        for engine in ["katex.min.js", "mhchem.min.js", "mermaid.min.js",
+                       "viz-standalone", "highlight.min.js"] {
+            XCTAssertFalse(html.contains(engine), "a plot-only document must not include \(engine)")
+        }
+
+        try await withRenderedWebView(source) { webView in
+            let svgs = try await self.evalCount(webView, "document.querySelectorAll('.plot svg').length")
+            let runs = try await self.evalCount(
+                webView, "document.querySelectorAll('.plot svg polyline').length")
+            let labels = try await self.evalCount(
+                webView, "document.querySelectorAll('.plot svg text').length")
+            XCTAssertEqual(svgs, 1, "the plot container must hold exactly one SVG")
+            XCTAssertEqual(runs, 2, "both series must draw as unbroken runs")
+            XCTAssertGreaterThanOrEqual(labels, 20, "the tick labels, title and axis labels")
+
+            // md-init.js is the only script on the page, and nothing else was
+            // fetched: `.plot` is not one of the classes it looks for.
+            let scripts = try await self.evalCount(webView, "document.querySelectorAll('script').length")
+            XCTAssertEqual(scripts, 1, "md-init.js and nothing else")
+            let engineScripts = try await self.evalCount(
+                webView,
+                "Array.from(document.querySelectorAll('script')).filter("
+                + "s => /katex|mermaid|viz|highlight|mhchem/.test(s.src)).length")
+            XCTAssertEqual(engineScripts, 0, "no engine may load for a plot-only document")
+
+            // And the ink really is the page's, not a baked grey: `currentColor`
+            // resolves to the body colour the theme set.
+            let stroke = try await webView.evaluateJavaScript(
+                "getComputedStyle(document.querySelector('.plot svg polyline')).stroke")
+            XCTAssertEqual((stroke as? String)?.replacingOccurrences(of: " ", with: ""),
+                           "rgb(103,58,183)", "the series keeps its baked palette colour")
+            let gridStroke = try await webView.evaluateJavaScript(
+                "getComputedStyle(document.querySelector('.plot svg g')).stroke")
+            let bodyColor = try await webView.evaluateJavaScript(
+                "getComputedStyle(document.body).color")
+            XCTAssertEqual(gridStroke as? String, bodyColor as? String,
+                           "grid ink is currentColor, so it follows the page in either theme")
+        }
+    }
+
     // MARK: HTML export — the exported file, loaded back with no engines
 
     /// The strongest check the three platforms allow: take a real export of a
@@ -212,6 +276,65 @@ final class RichRenderTests: XCTestCase {
             + ".fontFamily")
         let family = (font as? String) ?? ""
         XCTAssertTrue(family.contains("KaTeX"), "expected a KaTeX face, got “\(family)”")
+    }
+
+    /// The same standalone-export proof as above, for a plot-only document: no
+    /// script, no stylesheet link, no reference to `rich/`, and the figures
+    /// still there as inline SVG. Two fences, so the `svg >= 2` bar the rich
+    /// export meets is met here without any engine having run.
+    func testExportedHTMLOfAPlotDocumentStandsAloneWithNoEngines() async throws {
+        let source = """
+        # Two figures
+
+        ```plot
+        x: -10..10
+        y: -2..2
+        title: Damped oscillation
+        sin(x) * exp(-abs(x)/5)
+        ```
+
+        ```plot
+        x: -4..4
+        y: -1..3
+        (x>0)*sqrt(x)
+        ```
+        """
+        let page = try await DocumentExport.renderedHTMLPage(source: source, title: "plots", dark: false)
+        XCTAssertTrue(page.hasPrefix("<!DOCTYPE html>\n"))
+
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("md-plot-export-\(UUID().uuidString).html")
+        try Data(page.utf8).write(to: url, options: .atomic)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        // Deliberately a bare configuration: no `mdassets` handler.
+        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 1200),
+                                configuration: WKWebViewConfiguration())
+        let window = NSWindow(contentRect: NSRect(x: -3000, y: 0, width: 800, height: 1200),
+                              styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = webView
+        window.orderBack(nil)
+        defer { window.contentView = nil }
+
+        webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+        try await waitForLoad(webView, timeout: 30)
+
+        // The same four assertions the rich export has to satisfy.
+        let scripts = try await evalCount(webView, "document.querySelectorAll('script').length")
+        let links = try await evalCount(webView, "document.querySelectorAll('link').length")
+        let richRefs = try await evalCount(
+            webView, "document.documentElement.outerHTML.split('rich/').length - 1")
+        let svgs = try await evalCount(webView, "document.querySelectorAll('svg').length")
+        XCTAssertEqual(scripts, 0)
+        XCTAssertEqual(links, 0)
+        XCTAssertEqual(richRefs, 0, "no reference to the bundled engine folder may survive the export")
+        XCTAssertGreaterThanOrEqual(svgs, 2, "both plots must survive as inline SVG")
+
+        // No font payload either: a plot carries no maths, so the ~300 KB of
+        // woff2 stays behind.
+        XCTAssertFalse(page.contains("data:font/woff2"))
+        let polylines = try await evalCount(webView, "document.querySelectorAll('.plot svg polyline').length")
+        XCTAssertGreaterThanOrEqual(polylines, 2, "the curves themselves, not just the frames")
     }
 
     func testExportedHTMLOfAPlainDocumentCarriesNoFontPayload() async throws {

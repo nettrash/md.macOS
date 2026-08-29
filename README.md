@@ -64,6 +64,18 @@ Mermaid, Graphviz, PlantUML, and highlight.js for code).
   **PlantUML** (` ```plantuml `), all drawn on-device by the vendored
   engines and carried through to print and PDF. A raw `.puml` or `.gv` file
   opens and renders as the diagram it describes, source still editable.
+- **Plots** (` ```plot `). Write a function and md draws it — one line per
+  curve, with optional `x` / `y` ranges, `title`, `xlabel`, `ylabel`,
+  `legend`, `grid`, `axes`, `width`, `height` and `samples` above them.
+  Curves can be named (`envelope = exp(-abs(x)/5)`, which is what the legend
+  shows), parametric (`(cos(t), sin(t)) for t in 0..2*pi`) or plain data
+  (`measured = points: 0,0 1,2 2,1`), over the usual arithmetic with `pi`,
+  `e`, the thirty-odd functions you would expect and comparisons that are
+  numbers, so `(x > 0) * sqrt(x)` draws exactly the half it names. Alone
+  among the rich blocks it bundles **no engine at all**: the chart is a real
+  vector `<svg>` in the page before any script runs, which is why it works
+  in the preview, in print, in PDF, in an exported HTML page, in an EPUB
+  (as vector, not a photograph of one) and in Export Diagram as SVG…
 - **Three layouts.** *Edit*, *Split* (side by side, re-rendering as you
   type) and *Preview*, chosen with a segmented control in the window
   toolbar. The layout is remembered per window.
@@ -83,8 +95,8 @@ Mermaid, Graphviz, PlantUML, and highlight.js for code).
   **EPUB** e-book with the document's own headings as its table of
   contents, export it as LaTeX `.tex` source (formulas as the `$…$` you
   typed rather than a picture of them, ready to paste into a paper), export
-  a single **diagram** (Mermaid, Graphviz or PlantUML — math is HTML text,
-  not a drawing, so it isn't offered) as a standalone `.svg` vector file,
+  a single **diagram** (Mermaid, Graphviz, PlantUML or a plot — math is HTML
+  text, not a drawing, so it isn't offered) as a standalone `.svg` vector file,
   export the document as a **TextBundle** with any local images it
   references gathered into the bundle's `assets/`, or share the raw Markdown
   source — from the toolbar or from **File ▸ Print… (⌘P)**, the File menu's

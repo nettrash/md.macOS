@@ -763,6 +763,14 @@ enum LaTeXExport {
                 return diagram(language: name, code: code)
             case let engine where MarkdownHTML.graphvizEngines[engine] != nil:
                 return diagram(language: name, code: code)
+            case "plot":
+                // The one rich fence this app *can* draw without an engine —
+                // and it still travels as its source. `\includegraphics` reads
+                // no SVG without a conversion step a `.tex` file cannot carry,
+                // so the honest thing is the same treatment a Mermaid diagram
+                // gets: every number the author wrote, under a comment naming
+                // the language.
+                return diagram(language: name, code: code)
             case let delimited where delimited == "csv" || delimited == "tsv":
                 // Already a table everywhere else in the app; the parse and
                 // the alignment rule are shared with the HTML renderer so

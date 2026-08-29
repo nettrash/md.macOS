@@ -7,6 +7,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The build number (`CFBundleVersion`) is auto-incremented on every build by
 a scheme post-action (`agvtool bump`) and is not tracked here.
 
+## [1.4] — 2026-08-29
+
+### Added
+
+- **Plots.** A fenced block tagged `plot` now draws a chart. Write the
+  function and md draws it:
+
+  ````
+  ```plot
+  x: -10..10
+  y: -2..2
+  title: Damped oscillation
+  xlabel: x
+  ylabel: amplitude
+  envelope = exp(-abs(x)/5)
+  sin(x) * exp(-abs(x)/5)
+  ```
+  ````
+
+  One line per curve, in any order, with a handful of optional directives
+  above them: `x` and `y` for the window (`y` fits the data by itself unless
+  you say otherwise), `title`, `xlabel`, `ylabel`, `legend`, `grid`, `axes`,
+  `width`, `height` and `samples`. A curve can be named — `envelope = …` —
+  and the name is what the legend shows; an unnamed one shows its own
+  formula. Besides `f(x)` there are parametric curves,
+  `(cos(t), sin(t)) for t in 0..2*pi`, and plain data,
+  `measured = points: 0,0 1,2 2,1`. The expression language is the usual
+  arithmetic with `pi`, `e` and the thirty-odd functions you would expect —
+  `sin`, `ln`, `sqrt`, `floor`, `atan2`, `hypot` and the rest — plus
+  comparisons, which are numbers, so `(x > 0) * sqrt(x)` draws exactly the
+  half of the curve it names. Where a function has no value the curve simply
+  breaks, which is what makes `tan(x)` a set of branches and `1/x` two arms
+  instead of a spike across the page.
+
+  It ships with **no bundled asset at all** — no engine to download, nothing
+  added to the app but the code that draws it, where every other rich block
+  costs megabytes. The drawing is a real vector `<svg>` in the page
+  before any script runs, which is why it works everywhere at once — the
+  preview, print, an exported PDF, an exported HTML page, an exported EPUB
+  (as vector, not a photograph of one) and File ▸ Export Diagram as SVG…,
+  which now offers plots alongside Mermaid, Graphviz and PlantUML. It is
+  drawn in the page's own ink, so it is legible in the light theme, the dark
+  theme and on paper, and it is the one rich block that needs no engine at
+  all: a document containing only plots loads none. A LaTeX export keeps the
+  source under a comment, the same treatment a Mermaid diagram gets.
+
+  A block that cannot be read never disappears: it shows one `plot: …` line
+  saying what is wrong — `plot: unknown function 'sinc'` — with your own text
+  still underneath it.
+
+  Typing stays smooth in a document full of figures: because a plot is drawn
+  by the app rather than by an engine in the page, its cost lands in the
+  preview's own render, so a chart is now redrawn only when its own text
+  changes. Prose typed around a page of plots redraws none of them.
+
+- **Documents reopen the way you left them.** md now remembers, per file,
+  whether you last had it in Edit, Split or Preview, and opens it there next
+  time — so the notes you write in stay in Edit and the reference you only
+  read stays in Preview, without touching the View menu each time. The
+  memory follows the file, not the window: it holds across quitting the app
+  and across which window the document happens to open in.
+
+  Nothing about a file you have not opened before changes: it still opens in
+  Split, as it always has on a Mac. A new document still opens in Edit.
+  Saving an untitled document for the first time keeps the mode you were
+  already in, and renaming or moving a file in Finder simply lets it start
+  over as a document md has not seen. Books are deliberately left out
+  entirely: a book keeps one layout for the whole book, so stepping between
+  chapters never changes the view under you, and an article you open in its
+  own window is left out on the same grounds — it opens the way it always
+  has and records nothing, so a long book can never crowd your own
+  documents out of the memory. Zen mode stays per-window, as before.
+
+  Only a mode you *pick* is remembered. Jumping to a note from the Notes menu
+  still brings the editor up so the note is actually on screen, but that is a
+  move rather than a choice: neither a document's remembered mode nor the
+  book's own layout is rewritten by it, and both come back the way you chose
+  them.
+
 ## [1.3] — 2026-07-24
 
 ### Added

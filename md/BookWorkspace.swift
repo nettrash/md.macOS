@@ -659,13 +659,32 @@ struct BookArticleEditor: View {
     /// menus bump them) and consumed here exactly once by id.
     @Binding var previewNavigation: PreviewNavigation?
     @Binding var editorJump: EditorJump?
+    /// The pane a navigation jump has brought on screen, if one has.
+    ///
+    /// Passed in rather than read from storage, because it is deliberately not
+    /// stored: `md.bookViewMode` is the layout the reader *chose*, and a jump
+    /// to a note is a move, not a choice. It has to arrive here because this
+    /// view — not the toolbar that starts the jump — is what actually decides
+    /// which panes exist, so a nudge the toolbar kept to itself would move
+    /// nothing.
+    let navigationMode: DocumentView.Mode?
+
+    /// The book's single app-wide layout — see the note on the same key in
+    /// `BookNavigator`. Book articles are exempt from per-file view-mode
+    /// memory on all three ports; this pane must never write an entry into
+    /// `md.viewModeMemory`.
     @AppStorage("md.bookViewMode") private var storedMode = DocumentView.Mode.split.rawValue
 
     /// Links the panes' scrolling in Split, exactly as in a document
     /// window (identity-stable; the panes register themselves on it).
     @State private var scrollSync = ScrollSync()
 
-    private var mode: DocumentView.Mode { .init(rawValue: storedMode) ?? .split }
+    /// The layout on screen: the remembered one, unless a jump is overriding it.
+    private var mode: DocumentView.Mode {
+        ViewModeRule.displayedMode(preferred: .init(rawValue: storedMode) ?? .split,
+                                   navigation: navigationMode,
+                                   isWide: true)
+    }
 
     /// Edits flow through `session.edit`, never straight into the
     /// published property — that is what arms the autosave.
