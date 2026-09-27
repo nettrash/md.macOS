@@ -997,7 +997,12 @@ struct BookNavigator: View {
                     // …the mode switch, for the View-menu ⌘1/⌘2/⌘3…
                     .focusedSceneValue(\.viewModeSelection,
                                        ViewModeSelection(mode: mode,
-                                                         select: { select($0) }))
+                                                         select: { select($0) },
+                                                         // …and the nudge Edit ▸ Find
+                                                         // uses to bring the writing
+                                                         // pane back, exactly as a
+                                                         // Notes jump does.
+                                                         showEditor: { showEditor() }))
                     // …and the article's outline and notes, for the Go
                     // menu — same navigation as the toolbar menus.
                     .focusedSceneValue(\.documentNavigation,
@@ -1237,12 +1242,18 @@ struct BookNavigator: View {
     /// Jump to a note. Notes never render, so the target is always the
     /// editor — leaving preview-only mode first when necessary.
     private func jump(to note: NoteEntry) {
-        // A jump, not a preference: bring the editor on screen without touching
-        // the book's remembered layout. See `navigationMode`.
+        showEditor()
+        editorJump = EditorJump(id: UUID(), line: note.line)
+    }
+
+    /// Bring the writing pane on screen when only the preview is showing.
+    /// A jump, not a preference: it never touches the book's remembered
+    /// layout (see `navigationMode`). Shared by the Notes jump and by
+    /// Edit ▸ Find, which both have a target only the source can show.
+    private func showEditor() {
         if let nudge = ViewModeRule.navigationNudge(displayed: mode, wants: .edit) {
             navigationMode = nudge
         }
-        editorJump = EditorJump(id: UUID(), line: note.line)
     }
 
     /// The Rename / Move / Delete menu shared by article rows and chapter

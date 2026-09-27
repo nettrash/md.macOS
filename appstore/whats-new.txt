@@ -1,17 +1,26 @@
-Version 1.4 — charts drawn from a formula, and documents that reopen where you left off.
+Version 1.5. Find and replace, typing that continues your lists and capitalizes your sentences, every Markdown file extension, and a preview that comes back on its own.
 
-PLOTS
-• A fenced block tagged plot is now drawn as a chart. One line per curve — sin(x), or envelope = exp(-abs(x)/5) to give it a name for the legend — and any number of them share the figure, each in its own colour.
-• Functions of x, parametric curves written (cos(t), sin(t)) for t in 0..2*pi, and measured points typed in as points: 0,0 1,2 2,1.
-• x: and y: set the window, and y fits itself to the curve unless you say otherwise. title, xlabel, ylabel, legend, grid, axes, width, height and samples set the rest.
-• The usual arithmetic and comparisons, the constants pi and e, and the functions you would expect: sin cos tan asin acos atan sinh cosh tanh asinh acosh atanh sqrt cbrt abs exp exp2 ln log2 log10 floor ceil round atan2 pow hypot.
-• md draws the figure itself, in code. No engine sits behind it and there is nothing to fetch: it added nothing at all to what the app carries, where each of the diagram languages beside it — Mermaid, Graphviz and PlantUML — is an engine of several megabytes built in. A document whose figures are all plots loads no engine whatever.
-• The drawing is a real vector and travels with the page — the preview, print, an exported PDF, an exported HTML page, File ▸ Export Diagram as SVG…, which now offers plots beside Mermaid, Graphviz and PlantUML, and an exported EPUB, where a plot stays a vector rather than becoming a picture of one, as the other figures still do. A LaTeX export keeps the block's source under a comment, the same treatment a Mermaid diagram gets, so there is no chart in the .tex.
-• A block that cannot be read never leaves a hole in the page: one plot: line says what is wrong, with your own text still under it.
-• A figure is redrawn only when its own text changes, so writing prose around a page of charts leaves them all standing.
+FIND AND REPLACE
+• ⌘F opens a find bar over the text you are writing. ⌥⌘F brings the Replace field with it, ⌘G and ⇧⌘G step through the matches, and ⌘E searches for whatever is selected. The rows live in Edit ▸ Find.
+• Matching is plain text, ignoring case, and it wraps round the end of the document. There are no regular expressions.
+• The find bar belongs to the editor, so it searches your Markdown source and not the rendered page beside it. In Preview there is no editor on screen and nothing to search.
+• Replace All is a single undo step: one ⌘Z takes the whole run back, rather than one match at a time. A replace marks the document edited, so it autosaves exactly as typing does.
+• The writer-mode book window has it too, on the article you are editing and on that article's own undo stack.
 
-WHERE YOU LEFT OFF
-• md now remembers, for each file, whether you last had it in Edit, Split or Preview, and opens it there next time — the notes you write in stay in Edit, the reference you only read stays in Preview, with no trip to the View menu.
-• The memory follows the document rather than the window: it holds after you quit md, and whichever window the file opens in next. The last 200 documents you opened are remembered, on this Mac, and nothing is sent anywhere.
-• A document md has not seen before still opens in Split, exactly as before, and a new one still opens in Edit. Rename or move a file in the Finder and it simply starts over.
-• Books are left out of this on purpose: a book keeps one layout throughout, so stepping from one chapter to the next never changes the view under you. Zen mode stays per-window, as it was.
+TYPING
+• Return now continues what you are writing: the next bullet, number or task box of a list, the marker of a quoted block, a fresh row of a table. On an empty item it ends the list instead, and a nested empty item steps out one level.
+• The first letter of every line and of every sentence is capitalized, and it is Markdown-aware. It never happens inside a code fence, a table cell, inline code or math, a URL, or after an abbreviation or an initial.
+• A name that has to stay lowercase at the start of a sentence, md or npm, needs no fight: delete the capital md wrote and type the letter again, and it stays lowercase. Undo right after a capital takes just the capital back, as a step of its own.
+• Shift-Return is always a plain newline.
+• Both rules are switches in Edit ▸ Typing, on by default. Flip one and every open window follows at once.
+
+EVERY MARKDOWN SPELLING OPENS
+• Besides .md and .markdown, md now opens and saves .mdown, .markdn, .mdtext, .mdtxt, .mkd, .mkdn, .mdwn and .mkdown, the spellings other editors and older tooling have used over the years. A file keeps whichever extension it came with.
+• PlantUML files open under .iuml and .pu as well as .puml and .plantuml.
+• Three of those spellings were listed before and never actually worked. macOS declares the Markdown file type itself, and an app's copy of a type the system already owns is registered inactive, so .mdown, .markdn and .mdtext quietly never offered md in the Finder's Open With menu. They are now declared under a type md owns, which the system honours.
+• In the Save panel's format popup the extra spellings appear as one entry, "Markdown Document (other extensions)". A new document is still a .md.
+
+A PREVIEW THAT COMES BACK
+• The preview is drawn inside a web content process of its own, and that process can be killed from under it: by memory pressure, by a system update, or by a diagram that runs the layout engine out of room. The pane used to go blank and stay blank, with no hint that the document itself was fine.
+• It now loads itself again. If the same document kills it a second time with no successful render in between, md stops rather than looping and says so in one quiet line on the page. That one line is the whole of the recovery, and the next edit to the document tries again by itself.
+• A preview that is merely slow is left alone. A long PlantUML or Graphviz layout looks exactly like a hung process, and reloading would kill a drawing that was about to appear.

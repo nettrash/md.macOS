@@ -16,9 +16,11 @@
 //  The menu bar is the app's whole chrome — document windows carry no
 //  toolbar. File ▸ Print… (⌘P) and the Share commands act on the frontmost
 //  window through the `ActiveDocument` focused value it publishes; View ▸
-//  Edit / Split / Preview (⌘1/⌘2/⌘3) drive its mode switch; and the Go
-//  menu walks the book's articles (⌃⌘↑/↓) and the frontmost document's
-//  headings and private notes.
+//  Edit / Split / Preview (⌘1/⌘2/⌘3) drive its mode switch; Edit ▸ Typing
+//  holds the two app-wide typing rules (continue lists and tables,
+//  capitalize sentences — see `SmartTextView`); and the Go menu walks the
+//  book's articles (⌃⌘↑/↓) and the frontmost document's headings and
+//  private notes.
 //
 //  A second, auxiliary `Window` scene hosts the book window (writer mode,
 //  see `BookNavigator`): one app-wide window, opened on demand via
@@ -34,6 +36,15 @@ import AppKit
 
 @main
 struct mdApp: App {
+    init() {
+        #if DEBUG
+        // The command-line observation harness (see `LaunchDiagnostics`):
+        // inert unless launched with `-mdDiagCommands <file>`, and not
+        // compiled into a Release build at all.
+        LaunchDiagnostics.install()
+        #endif
+    }
+
     var body: some Scene {
         DocumentGroup(newDocument: MarkdownDocument()) { file in
             // Pass the file URL only so exports / the print job can be named
@@ -56,6 +67,15 @@ struct mdApp: App {
             BookNavigator()
         }
         .defaultSize(width: 1000, height: 700)
+        // Never the answer to a file md cannot open. SwiftUI hands an open
+        // request the document group declines — a `.dot` file, or a
+        // PlantUML spelling another app's declaration has left unassociated
+        // — to the next scene that will take an external event, and a
+        // `Window` takes them all by default: the book window popped up,
+        // empty, in place of any word about the file. Declining every
+        // external event here leaves the request to the document
+        // architecture, which says what it could not open.
+        .handlesExternalEvents(matching: [])
     }
 }
 
@@ -122,12 +142,21 @@ extension FocusedValues {
 /// The Edit / Split / Preview switch of the frontmost editing surface — a
 /// document window or the book window's writing pane — published via
 /// `focusedSceneValue` so the View-menu ⌘1/⌘2/⌘3 commands drive whichever
-/// is in front. Equality is the mode alone: the closure just writes the
-/// publisher's own storage, and comparing it is neither possible nor
+/// is in front. Equality is the mode alone: the closures just write the
+/// publisher's own storage, and comparing them is neither possible nor
 /// needed.
 struct ViewModeSelection: Equatable {
     var mode: DocumentView.Mode
     let select: (DocumentView.Mode) -> Void
+    /// Bring the editing pane on screen *without* recording a layout
+    /// preference — the **navigation nudge** (`ViewModeRule.navigationNudge`)
+    /// the Go ▸ Notes jump already uses, because a note is only visible in
+    /// the source. Edit ▸ Find is the same situation: a match lives in the
+    /// source too, so ⌘F in a preview-only window nudges the editor back
+    /// rather than doing nothing at all. Transient, exactly like the jump's
+    /// — choosing a mode for real ends it, and nothing is written to the
+    /// per-file (or the book's) remembered layout.
+    let showEditor: () -> Void
     static func == (a: Self, b: Self) -> Bool { a.mode == b.mode }
 }
 
@@ -318,6 +347,12 @@ struct DocumentCommands: Commands {
     /// window's picker reads) the book compile's. Stored as the stable
     /// `PageSize.id`; `PageSize.named` maps it back and defaults to A4.
     @AppStorage("md.pdfPageSize") private var pdfPageSizeID = PageSize.a4.id
+    /// The two typing rules (Edit ▸ Typing), app-wide and on by default.
+    /// Every open editor reads the same keys at the keystroke
+    /// (`TypingSettings`), so flipping one here takes effect at once in
+    /// every window, document or book.
+    @AppStorage(TypingSettings.continueListsKey) private var continueLists = true
+    @AppStorage(TypingSettings.capitalizeSentencesKey) private var capitalizeSentences = true
     /// Opening scenes is an app-level action the environment provides even
     /// inside menu commands — how the book commands reach their window.
     @Environment(\.openWindow) private var openWindow
@@ -326,6 +361,100 @@ struct DocumentCommands: Commands {
     /// Creating documents is likewise an environment action — how the
     /// Examples menu opens an example as a fresh untitled document.
     @Environment(\.newDocument) private var newDocument
+
+    /// Send one `NSTextFinder` action down the responder chain exactly as an
+    /// AppKit Find menu item does: the action is `performTextFinderAction:`
+    /// and the sender's `tag` carries which of the actions it is. A detached
+    /// `NSMenuItem` is that sender — nothing ever shows it, it is only the
+    /// tag's carrier. `to: nil` lets the key window's first responder answer,
+    /// so whichever text view has focus is the one that searches — including
+    /// a text field the writer happens to be typing in, which is what every
+    /// Mac app's Find menu does.
+    ///
+    /// When nothing answers, the action is not dropped: a window showing the
+    /// editing pane has an editor whether or not the writer has clicked into
+    /// it yet, and ⌘F that does nothing until you click the text would be a
+    /// small daily annoyance. The frontmost window's editor is given the
+    /// keyboard — which is where the find bar's own field wants it — and the
+    /// action.
+    ///
+    /// A window with no editing pane at all — Preview only, or Zen reading —
+    /// has no editor to find in, and `showEditor` is how it grows one: the
+    /// same navigation nudge the Go ▸ Notes jump uses, since a match lives in
+    /// the source exactly as a note does. The nudge only sets SwiftUI state,
+    /// so the text view does not exist yet when it returns; the action is
+    /// delivered a moment later instead, as soon as the pane is there, and
+    /// gives up if no editor ever appears. A window md publishes no mode for
+    /// at all (a sheet, a panel, another app's) passes no `showEditor`, and
+    /// there the action really does stop.
+    static func performFinderAction(_ action: NSTextFinder.Action,
+                                    showEditor: (() -> Void)? = nil) {
+        let sender = NSMenuItem()
+        sender.tag = action.rawValue
+        if NSApp.sendAction(#selector(NSResponder.performTextFinderAction(_:)),
+                            to: nil, from: sender) { return }
+        let window = NSApp.keyWindow ?? NSApp.mainWindow
+        if deliverFinderAction(sender, to: window) { return }
+        guard let showEditor else { return }
+        showEditor()
+        deliverFinderAction(sender, to: window, whenTheEditorAppears: 20)
+    }
+
+    /// Hand one Find action to `window`'s editing pane, focusing it first.
+    /// False — and nothing done — when that window has no editing pane.
+    @discardableResult
+    static func deliverFinderAction(_ sender: NSMenuItem, to window: NSWindow?) -> Bool {
+        guard let window, let editor = firstEditor(in: window.contentView) else { return false }
+        window.makeFirstResponder(editor)
+        editor.performTextFinderAction(sender)
+        return true
+    }
+
+    /// How long to wait between tries for the nudged pane to appear.
+    ///
+    /// Deliberately a short *wait* and not a plain `async` hop. Queued
+    /// blocks can all run back to back inside one runloop pass, ahead of
+    /// SwiftUI's own update and display: measured against Zen's read/write
+    /// switch, a dozen consecutive hops drained before the editor existed
+    /// and the find bar never opened at all.
+    static let retryInterval: TimeInterval = 0.05
+
+    /// The same delivery, retried until the pane the nudge asked for has
+    /// been built and put in the window — `attempts` tries, one every
+    /// `retryInterval`, so a window that never grows an editor (the writer
+    /// moved on, the nudge landed nowhere) stops instead of spinning. In
+    /// practice the first try finds it.
+    static func deliverFinderAction(_ sender: NSMenuItem, to window: NSWindow?,
+                                    whenTheEditorAppears attempts: Int) {
+        guard attempts > 0 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + retryInterval) {
+            if deliverFinderAction(sender, to: window) { return }
+            deliverFinderAction(sender, to: window, whenTheEditorAppears: attempts - 1)
+        }
+    }
+
+    /// The editing pane inside a view tree, depth first. Deliberately typed
+    /// to md's own `SmartTextView` rather than to `NSTextView`: a visible
+    /// find bar puts *its* search field's field editor — also an
+    /// `NSTextView` — into the same tree, and searching for the base class
+    /// could hand the find bar itself back instead of the document.
+    static func firstEditor(in view: NSView?) -> SmartTextView? {
+        guard let view else { return nil }
+        if let editor = view as? SmartTextView { return editor }
+        for subview in view.subviews {
+            if let found = firstEditor(in: subview) { return found }
+        }
+        return nil
+    }
+
+    /// What every Edit ▸ Find row does: the action, plus the frontmost
+    /// editing surface's way of putting its editor on screen when it is
+    /// showing only the preview. `viewMode` is nil when the frontmost window
+    /// is not one of md's editing surfaces, and then there is nothing to
+    /// nudge.
+    private func find(_ action: NSTextFinder.Action) {
+        Self.performFinderAction(action, showEditor: viewMode?.showEditor)
+    }
 
     var body: some Commands {
         // Examples — example documents, plus a ready-made sample book. They
@@ -393,6 +522,57 @@ struct DocumentCommands: Commands {
                 }
             }
             .disabled(bookBookmark.isEmpty)
+        }
+
+        // Edit ▸ Find, and Edit ▸ Typing — both after Cut / Copy / Paste /
+        // Select All, where the system's own text-editing rows live.
+        //
+        // The Find rows are md's, not the system's: SwiftUI builds no Find
+        // submenu at all (its Edit menu goes Undo, Redo, Cut, Copy, Paste,
+        // Delete, Select All and then straight on to AutoFill and
+        // Dictation), and on macOS ⌘F is a *menu* key equivalent, not a
+        // text-view key binding — with no menu row there is no way into the
+        // find bar the editor is configured for. Each row does exactly what
+        // an AppKit Find menu item does: send `performTextFinderAction:`
+        // down the responder chain with an `NSTextFinder.Action` in the
+        // sender's tag, which the frontmost editor's `NSTextView` (document
+        // window or book workspace) answers by showing its find bar and
+        // running the search. Matching is `NSTextFinder`'s own — ordinal,
+        // case-insensitive, wrapping, no regular expressions — which is the
+        // rule every md edition shares.
+        //
+        // The rows are never disabled: whether they have anywhere to go
+        // depends on the first responder, which changes without SwiftUI
+        // rebuilding the menu, so a computed enabled state would go stale.
+        // They do not need to be, either — an md editing surface always has
+        // somewhere to send them, because a window showing only the preview
+        // nudges its editor back first (`performFinderAction`'s `showEditor`).
+        CommandGroup(after: .pasteboard) {
+            Divider()
+            Menu("Find") {
+                Button("Find…") { find(.showFindInterface) }
+                    .keyboardShortcut("f", modifiers: .command)
+                Button("Find and Replace…") { find(.showReplaceInterface) }
+                    .keyboardShortcut("f", modifiers: [.command, .option])
+                Button("Find Next") { find(.nextMatch) }
+                    .keyboardShortcut("g", modifiers: .command)
+                Button("Find Previous") { find(.previousMatch) }
+                    .keyboardShortcut("g", modifiers: [.command, .shift])
+                Divider()
+                Button("Use Selection for Find") { find(.setSearchString) }
+                    .keyboardShortcut("e", modifiers: .command)
+            }
+        }
+
+        // Edit ▸ Typing — the two typing rules. Toggles, so each wears a
+        // checkmark when on; they are settings, not window actions, so they
+        // are never disabled.
+        CommandGroup(after: .pasteboard) {
+            Divider()
+            Menu("Typing") {
+                Toggle("Continue Lists and Tables", isOn: $continueLists)
+                Toggle("Capitalize Sentences", isOn: $capitalizeSentences)
+            }
         }
 
         // The frontmost window's Edit / Split / Preview, with the

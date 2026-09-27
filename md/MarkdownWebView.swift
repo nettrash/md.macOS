@@ -13,6 +13,10 @@
 //  origin (rather than `file://`) is what lets `md-init.js`'s ES-module
 //  `import` of the PlantUML engine resolve. No network is ever touched.
 //
+//  The pane also survives the death of its own web content process — see
+//  `PreviewRetryPolicy`, which holds the counting, and
+//  `webViewWebContentProcessDidTerminate` below, which acts on it.
+//
 
 import AppKit
 import SwiftUI
@@ -156,6 +160,22 @@ struct PreviewNavigation: Equatable {
 
 // MARK: - SwiftUI preview
 
+/// The preview's recovery state for one document: the retry policy and the
+/// rendered document the last pane showed. It belongs to the *document*, not
+/// to the pane — `DocumentView` and `BookWorkspace` each own one and hand it
+/// to every preview they build — because the pane leaves the hierarchy in
+/// Edit and is rebuilt between Split and Preview. A policy kept in the pane's
+/// coordinator went with it, so a preview that had given up came straight
+/// back on the next visit and cost two more content-process deaths for a
+/// document that had not changed (found 2026-09-27, the same defect as md for
+/// iOS and md.Android).
+final class PreviewRecovery {
+    var retry = PreviewRetryPolicy()
+    /// The last pane's document (its token and text/title/theme key). A pane
+    /// built again for the same one is a mode switch, not an edit.
+    var shownKey: String?
+}
+
 struct MarkdownWebView: NSViewRepresentable {
     let text: String
     let title: String
@@ -177,9 +197,13 @@ struct MarkdownWebView: NSViewRepresentable {
     /// The Split view's pane link (see `ScrollSync`): the preview reports
     /// its scroll fraction there and follows the editor's.
     var scrollSync: ScrollSync? = nil
+    /// The document's recovery state, owned by the caller so it outlives
+    /// this pane (see `PreviewRecovery`). A preview built without one keeps
+    /// its own, as before.
+    var recovery: PreviewRecovery? = nil
     @Environment(\.colorScheme) private var colorScheme
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeCoordinator() -> Coordinator { Coordinator(recovery: recovery ?? PreviewRecovery()) }
 
     func makeNSView(context: Context) -> WKWebView {
         context.coordinator.update(text: text, title: title, dark: colorScheme == .dark,
@@ -201,14 +225,32 @@ struct MarkdownWebView: NSViewRepresentable {
         private var loadedOnce = false
         private var lastKey: String?
         private var lastToken: URL?
+        /// The title and theme the current HTML was built with — what the
+        /// give-up notice is rendered with, so it lands on the same paper.
+        private var lastTitle = ""
+        private var lastDark = false
         private var savedScrollY: Double = 0
+        /// The document's recovery state (see `PreviewRecovery`).
+        let recovery: PreviewRecovery
+        /// Consecutive web-content-process deaths (see `PreviewRetryPolicy`).
+        /// Readable so the tests can pin which event resets it; kept on the
+        /// recovery so that it outlives this coordinator.
+        private(set) var retry: PreviewRetryPolicy {
+            get { recovery.retry }
+            set { recovery.retry = newValue }
+        }
+        /// True while the pane shows the give-up notice rather than the
+        /// document: its own load must not be counted as a render that
+        /// proves the document is fine.
+        private var showingNotice = false
         private var pending: DispatchWorkItem?
         /// The last `PreviewNavigation.id` already performed (see `navigate`).
         private var lastNavigationID: UUID?
         /// The Split view's pane link, when this preview is half of one.
         private var scrollSync: ScrollSync?
 
-        override init() {
+        init(recovery: PreviewRecovery = PreviewRecovery()) {
+            self.recovery = recovery
             let config = WKWebViewConfiguration()
             config.setURLSchemeHandler(assets, forURLScheme: MdAssetSchemeHandler.scheme)
             // The scroll-sync reporter, re-injected into every page load.
@@ -219,6 +261,9 @@ struct MarkdownWebView: NSViewRepresentable {
             webView = WKWebView(frame: .zero, configuration: config)
             super.init()
             config.userContentController.add(WeakScriptMessageHandler(self), name: "mdScroll")
+            // `md-init.js` posts here once every renderer has settled — see
+            // `renderDidComplete`, which is where the retry count is reset.
+            config.userContentController.add(WeakScriptMessageHandler(self), name: "mdRender")
             webView.navigationDelegate = self
             // Let the CSS paper colour show instead of a white flash on reload.
             webView.setValue(false, forKey: "drawsBackground")
@@ -235,16 +280,45 @@ struct MarkdownWebView: NSViewRepresentable {
             }
         }
 
+        /// The two things the page tells the host about: that it scrolled,
+        /// and that it has finished rendering.
+        func userContentController(_ userContentController: WKUserContentController,
+                                   didReceive message: WKScriptMessage) {
+            switch message.name {
+            case "mdScroll": previewDidScroll(message.body)
+            case "mdRender": renderDidComplete()
+            default: break
+            }
+        }
+
         /// The page reported a scroll. Echoes of our own sets (and of the
         /// navigation jumps and reload restores) carry `echo: true` and go
         /// no further — only the reader's hand drives the editor.
-        func userContentController(_ userContentController: WKUserContentController,
-                                   didReceive message: WKScriptMessage) {
-            guard message.name == "mdScroll",
-                  let body = message.body as? [String: Any],
+        private func previewDidScroll(_ body: Any) {
+            guard let body = body as? [String: Any],
                   (body["echo"] as? Bool) != true,
                   let fraction = body["fraction"] as? Double else { return }
             scrollSync?.previewDidScroll(to: CGFloat(fraction))
+        }
+
+        /// `md-init.js` finished: the math, the highlighting and every
+        /// diagram engine have run and the page survived them. *This* is a
+        /// rendered document, and the consecutive-failure count starts over.
+        ///
+        /// Not `didFinish`, which WebKit delivers at the main frame's load
+        /// event — before `md-init.js` has started a single renderer, let
+        /// alone imported the 7 MB PlantUML engine or laid a graph out.
+        /// Resetting there would clear the count for the very document that
+        /// is about to kill the web process, so the count could never reach
+        /// `PreviewRetryPolicy.limit` and the pane would reload for ever.
+        /// (Measured: the ordering is load event → `didFinish` → engines
+        /// start → engines end → this.)
+        ///
+        /// The give-up notice renders too, and its own completion must not
+        /// be taken for the document's.
+        func renderDidComplete() {
+            guard !showingNotice else { return }
+            retry.renderDidFinish()
         }
 
         /// Re-render when the text, title, or theme changes. The first render
@@ -260,6 +334,29 @@ struct MarkdownWebView: NSViewRepresentable {
             let key = "\(dark)|\(title)|\(text)"
             guard key != lastKey || newDocument else { return }
             lastKey = key
+            lastTitle = title
+            lastDark = dark
+            // A new pane for the document the last one showed — the writer
+            // switched to Edit and back, or between Split and Preview — is
+            // not an edit. If that document made the preview give up, the
+            // pane shows the notice again and loads nothing else.
+            let shown = "\(token?.absoluteString ?? "")|\(key)"
+            let sameAsShown = shown == recovery.shownKey
+            recovery.shownKey = shown
+            if sameAsShown && !loadedOnce && retry.hasGivenUp {
+                loadedOnce = true
+                showingNotice = true
+                savedScrollY = 0
+                assets.html = MarkdownHTML.document(PreviewRetryPolicy.noticeSource, title: title, dark: dark)
+                webView.load(URLRequest(url: MdAssetSchemeHandler.indexURL))
+                return
+            }
+            // A different page is about to be loaded — and that load is the
+            // one attempt an edit buys: a pane showing the give-up notice
+            // goes back to showing the document, while the failure count
+            // stands until something actually renders.
+            retry.documentDidChange()
+            showingNotice = false
             assets.html = MarkdownHTML.document(text, title: title, dark: dark)
             pending?.cancel()
             if !loadedOnce || newDocument {
@@ -297,6 +394,38 @@ struct MarkdownWebView: NSViewRepresentable {
             }
         }
 
+        /// The web content process died and took the page with it —
+        /// memory pressure, a WebKit update, or a diagram engine that ran
+        /// away with it. WebKit blanks the pane and leaves it blank; this
+        /// loads the same document again. A second death with no render in
+        /// between is a document that kills the process every time, so md
+        /// stops there and shows `PreviewRetryPolicy.noticeSource` instead
+        /// of looping; a successful render starts the count over, and the
+        /// next edit buys exactly one more attempt — the load `update`
+        /// makes for it. There is deliberately no handler for *unresponsive*: a
+        /// long PlantUML or Graphviz layout is indistinguishable from a
+        /// hung process, and reloading would kill a render about to finish.
+        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            switch retry.contentProcessDidTerminate() {
+            case .reload:
+                // `reload()` is not dependable on a view whose process has
+                // gone; a fresh load of the same URL is. The scroll
+                // position saved before the last reload still stands, so
+                // the reader comes back where they were.
+                pending?.cancel()
+                webView.load(URLRequest(url: MdAssetSchemeHandler.indexURL))
+            case .giveUp:
+                pending?.cancel()
+                showingNotice = true
+                savedScrollY = 0
+                assets.html = MarkdownHTML.document(PreviewRetryPolicy.noticeSource,
+                                                    title: lastTitle, dark: lastDark)
+                webView.load(URLRequest(url: MdAssetSchemeHandler.indexURL))
+            case .ignore:
+                break
+            }
+        }
+
         private func reloadPreservingScroll() {
             webView.evaluateJavaScript("window.scrollY") { [weak self] value, _ in
                 self?.savedScrollY = (value as? Double) ?? 0
@@ -305,6 +434,8 @@ struct MarkdownWebView: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            // Deliberately *not* where the retry count is reset — the
+            // renderers have not run yet (see `renderDidComplete`).
             guard savedScrollY > 0 else { return }
             // Programmatic (see the sync script): a restore must not read
             // as the reader scrolling and yank the editor around.

@@ -28,7 +28,13 @@ Mermaid, Graphviz, PlantUML, and highlight.js for code).
   files anywhere through the standard open / save panels, with autosave,
   versions, and the title-bar proxy menu's **Rename / Move To / Duplicate**
   — all native, because the app is a real `NSDocument` `DocumentGroup`.
-  Plain-text files open too and keep their extension. A **TextBundle**
+  The other Markdown spellings — `.mdown`, `.markdn`, `.mdtext`, `.mdtxt`,
+  `.mkd`, `.mkdn`, `.mdwn` and `.mkdown` — open and save the same way and
+  keep their extension. Every spelling but `.md`, `.markdown` included, is
+  registered under md's own document type — the same declarations as the
+  iOS app, where that is what keeps `.markdown` associated on iOS 26, which
+  itself knows Markdown only as `.md`. Plain-text files (`.txt`, `.text`)
+  open too and keep their extension. A **TextBundle**
   (`.textbundle`) or **TextPack** (`.textpack`) — the Markdown-with-images
   container Ulysses, iA Writer and Bear write — opens too, imported as its
   text for editing (the bundle's own `assets/` images aren't shown in the
@@ -62,8 +68,9 @@ Mermaid, Graphviz, PlantUML, and highlight.js for code).
   or ` ```gv `, and every layout program — `neato`, `circo`, `fdp`, `sfdp`,
   `twopi`, `osage`, `patchwork` — usable as the block language) and
   **PlantUML** (` ```plantuml `), all drawn on-device by the vendored
-  engines and carried through to print and PDF. A raw `.puml` or `.gv` file
-  opens and renders as the diagram it describes, source still editable.
+  engines and carried through to print and PDF. A raw PlantUML file
+  (`.puml`, `.plantuml`, `.iuml` or `.pu`) or Graphviz file (`.gv`) opens
+  and renders as the diagram it describes, source still editable.
 - **Plots** (` ```plot `). Write a function and md draws it — one line per
   curve, with optional `x` / `y` ranges, `title`, `xlabel`, `ylabel`,
   `legend`, `grid`, `axes`, `width`, `height` and `samples` above them.
@@ -86,6 +93,29 @@ Mermaid, Graphviz, PlantUML, and highlight.js for code).
   by the standard **Edit ▸ Undo / Redo**, continuous autosave through the
   document architecture, and Markdown punctuation left literal (no
   smart-quote / dash surprises).
+- **Find and Replace.** ⌘F opens a find bar over the text; ⌥⌘F brings the
+  Replace field with it, ⌘G and ⇧⌘G step through the matches, and ⌘E
+  searches for the selection. Matching is plain text, case-insensitive and
+  wrapping — the same rule in every md edition, with no regular
+  expressions. Replace All is a single undo step, and a replace marks the
+  document edited so it autosaves like typing does. The writer-mode book
+  window has it too, scoped to the article being edited.
+- **Typing.** Return continues what you are writing: the next bullet,
+  number or task box of a list, the `>` of a quote, a new row of a table
+  — and on an empty item it ends the list instead (a nested empty item
+  steps out one level). The first letter of every line and of every
+  sentence is capitalized, Markdown-aware: never inside a code fence, a
+  table cell, inline code or math, a URL, or after an abbreviation such
+  as `e.g.` or an initial. A brand name that must stay lowercase at a
+  sentence start (`md`, `iOS`, `npm`) needs no fight: delete the capital
+  md wrote and type the letter again; it stays lowercase. Undo right
+  after a capital takes just the capital back. An accented letter picked
+  from the press-and-hold popover keeps the capital md just made
+  (`École`). Shift-Return is always a plain newline. Both rules are
+  switches in **Edit ▸ Typing** — *Continue Lists and Tables* and
+  *Capitalize Sentences* — and a flip applies to every open window at
+  once. They answer every keystroke exactly as the iOS, Android and
+  Windows editions do, from one shared specification.
 - **Print & share.** Print or share the *rendered* document as a themed
   PDF (matching light / dark) — at A4, A5, US Letter or Legal, or a
   print-on-demand trim size (6 × 9″, 5 × 8″, 5.5 × 8.5″), the choice
@@ -101,6 +131,12 @@ Mermaid, Graphviz, PlantUML, and highlight.js for code).
   references gathered into the bundle's `assets/`, or share the raw Markdown
   source — from the toolbar or from **File ▸ Print… (⌘P)**, the File menu's
   Export commands and the Share commands.
+- **A preview that comes back.** The preview renders in a web content
+  process of its own, which the system can kill under memory pressure (or a
+  runaway diagram can bring down). md reloads it instead of leaving the
+  pane blank, and if the same document kills it twice in a row it stops
+  retrying and says so in one line rather than looping — the next edit
+  tries again.
 - **Light / dark and text selection** throughout. The app is sandboxed and
   makes no network connections.
 

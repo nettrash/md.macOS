@@ -128,6 +128,9 @@ struct DocumentView: View {
     /// or a pane recreated after a mode round-trip (whose dedupe died with
     /// it) would replay the old jump.
     @State private var previewNavigation: PreviewNavigation?
+    /// The preview's recovery state for this document — owned here, not by
+    /// the pane, which leaves the hierarchy in Edit (see `PreviewRecovery`).
+    @State private var previewRecovery = PreviewRecovery()
     @State private var editorJump: EditorJump?
 
     /// The footer's counters and the Go menu's outline / notes, cached off
@@ -321,6 +324,20 @@ struct DocumentView: View {
                                     } else {
                                         setMode(mode)
                                     }
+                                },
+                                // Edit ▸ Find needs the editor on screen for
+                                // the same reason a Notes jump does — the
+                                // match is in the source — so it gets the
+                                // same nudge, and records nothing. In Zen
+                                // the equivalent is the write/read switch,
+                                // which is per-window state anyway.
+                                showEditor: {
+                                    if zenActive {
+                                        zenReading = false
+                                    } else if let nudge = ViewModeRule.navigationNudge(
+                                        displayed: effectiveMode, wants: .edit) {
+                                        navigationMode = nudge
+                                    }
                                 }))
             // …the Zen toggle, for View ▸ Zen Mode (⇧⌘↩)…
             .focusedSceneValue(\.zenMode,
@@ -508,7 +525,8 @@ struct DocumentView: View {
                         onNavigationHandled: { handled in
                             if previewNavigation?.id == handled { previewNavigation = nil }
                         },
-                        scrollSync: scrollSync)
+                        scrollSync: scrollSync,
+                        recovery: previewRecovery)
     }
 
     // MARK: - Navigation (Contents / Notes)

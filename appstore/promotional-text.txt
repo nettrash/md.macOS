@@ -1,1 +1,1 @@
-Version 1.4 turns a plot block of formulas into a chart md draws itself, with no engine behind it — and every document reopens in the layout you last had it in.
+Version 1.5 adds find and replace, Return that carries your lists, quotes and tables on, and every Markdown file extension now opens in md.

@@ -6,11 +6,11 @@ repo's `play/` folder. One file per field, plain text, paste as-is.
 
 | File | App Store Connect field | Limit | Current |
 | --- | --- | --- | --- |
-| `promotional-text.txt` | Promotional Text | 170 | 160 |
-| `description.txt` | Description | 4000 | 3981 |
+| `promotional-text.txt` | Promotional Text | 170 | 139 |
+| `description.txt` | Description | 4000 | 3901 |
 | `keywords.txt` | Keywords | 100 | 99 |
-| `whats-new.txt` | What's New in This Version | 4000 | 2732 |
-| `review-notes.txt` | App Review Information ▸ Notes | 4000 | 3972 |
+| `whats-new.txt` | What's New in This Version | 4000 | 3454 |
+| `review-notes.txt` | App Review Information ▸ Notes | 4000 | 3980 |
 
 Promotional Text can be changed at any time without submitting a new build;
 the Description and What's New ship with a version.
@@ -80,12 +80,31 @@ not downloaded code (2.5.2). It also states the Privacy Nutrition Label
 answer that matches the build — Data Not Collected.
 
 If App Review asks for a screen recording again, the walkthrough in §2 is
-the script: it exercises every new 1.2 feature in about three minutes.
+the script: it exercises the app, and 1.5's own additions, in about three minutes.
 
 ## If 1.1 never shipped on the Mac App Store
 
-`whats-new.txt` covers 1.2 only. Should the store still be on 1.0, add the
+`whats-new.txt` covers 1.5 only. Should the store still be on 1.0, add the
 1.1 headline as a first bullet:
 
     • Math, Mermaid and PlantUML now render in the preview, the printout
       and the PDF — drawn on your Mac, offline.
+
+## Screenshots
+
+`screenshots/mac/` — eight 2880 × 1800 shots (the Mac App Store's largest
+16:10 size), numbered in upload order: Welcome, typing, Diagrams, Find and
+Replace, Plots, Math, the book window, Code. Taken for 1.5 in light mode, each
+window captured on its own by window number (`screencapture -l`), never the
+screen, and flattened onto the page colour — App Store Connect refuses an
+alpha channel, and a window capture has transparent corners.
+
+They come from a separate copy of the app, built with
+`PRODUCT_BUNDLE_IDENTIFIER=me.nettrash.md.shots` and ad-hoc signed with the
+app's own entitlements, so it runs in a sandbox container of its own and
+nothing of the writer's own md — recent files, the remembered book — can
+reach a picture. The DEBUG harness (`md/LaunchDiagnostics.swift`,
+`-mdDiagCommands` with a command file inside that container) drives it:
+`openfile` for named documents, `menuitem` for View, Go ▸ Contents and Find,
+`insert type:` to type through the real key paths, `examplebook` for the
+sample book, `frame 1440 900` for the size, `activate` to make a window key.
