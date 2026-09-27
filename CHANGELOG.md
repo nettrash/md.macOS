@@ -7,6 +7,135 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The build number (`CFBundleVersion`) is auto-incremented on every build by
 a scheme post-action (`agvtool bump`) and is not tracked here.
 
+## [1.5] — 2026-09-23
+
+### Added
+
+- **Find and Replace.** ⌘F opens a find bar over the text you are writing;
+  ⌥⌘F brings the Replace field with it, ⌘G and ⇧⌘G step through the
+  matches, and ⌘E searches for whatever is selected. The rows live in
+  **Edit ▸ Find**, and ⌘F reaches the editor whether or not you have
+  clicked into the text first. Matching is the one rule every md edition
+  shares: plain text, ignoring case, wrapping round the end of the
+  document, and **no regular expressions** anywhere. Replace All is a
+  single undo step — one ⌘Z takes the whole run back, not one match at a
+  time — and a replace marks the document edited exactly as typing does,
+  so it autosaves like anything else. The writer-mode book window has it
+  too, on the article being edited and on that article's own undo stack.
+
+  What it searches is the text, not the page: the find bar belongs to the
+  editor, so it looks through your Markdown source and never through the
+  rendered preview beside it. In Preview — or in Zen's reading half — ⌘F
+  brings the source back on screen and searches there.
+
+  A find bar left open while the document is replaced underneath it —
+  File ▸ Revert To, or *Reload from Disk* on an article in the writer-mode
+  book window — follows the new text: ⌘G goes on finding, and Replace All
+  replaces the matches that are there rather than whatever stood at those
+  positions in the old file.
+- **Typing.** Return now continues what you are writing — the next bullet,
+  number or task box of a list, the `>` of a quote, a fresh row of a table
+  — and on an empty item ends the list instead (a nested empty item steps
+  out one level). The first letter of every line and of every sentence is
+  capitalized, Markdown-aware: never inside a code fence, a table cell,
+  inline code or math, a URL, or after an abbreviation or an initial.
+
+  A brand name that must stay lowercase at a sentence start (`md`, `iOS`)
+  needs no fight: delete the capital md wrote and type the letter again;
+  it stays lowercase. That holds however the capital goes — over it alone,
+  after the words typed past it, together with the whole word, by undoing
+  it — and whatever else was cut, pasted or deleted around it in the
+  meantime. Undo right after a capital takes just the capital back, as a
+  step of its own. An accented letter picked from the press-and-hold
+  popover keeps the capital md just made (`École`); picked over a letter
+  that stayed lowercase, it stays lowercase too. Shift-Return is always a
+  plain newline; Control-Return inserts a real line feed rather than the
+  system's U+2028, which Markdown does not treat as a line break.
+
+  Both rules are switches in **Edit ▸ Typing** (*Continue Lists and
+  Tables*, *Capitalize Sentences*), on by default, applying to every open
+  window the moment they are flipped. Every md edition answers every
+  keystroke the same way, from one shared specification and one shared set
+  of 1350 test vectors.
+- **Every Markdown spelling opens.** Besides `.md` and `.markdown`, md now
+  opens and saves `.mdown`, `.markdn`, `.mdtext`, `.mdtxt`, `.mkd`,
+  `.mkdn`, `.mdwn` and `.mkdown` — the spellings other editors and older
+  tooling have used over the years — and a file keeps whichever extension
+  it came with rather than being quietly renamed. PlantUML files open
+  under `.iuml` and `.pu` as well as `.puml` and `.plantuml`. Every md app
+  registers the same set of extensions, so a file that opens on one of
+  them opens on all of them. In the Save panel's format popup the extra
+  spellings appear as one entry, "Markdown Document (other extensions)",
+  `.markdown` now among them and its default; a new document is still a
+  `.md`.
+
+### Fixed
+
+- **Switching views no longer restarts a preview that stopped.** When a
+  diagram stopped the preview twice in a row, going to Edit and back to
+  Preview (or between Split and Preview) started it again — twice more —
+  for a document that had not changed. The notice now stays until you edit
+  the document; the book workspace keeps it per article.
+- **⌘F did nothing in Preview.** A window showing only the rendered page —
+  Preview, or Zen's reading half — had no editor for the Find rows to
+  reach, so ⌘F, ⌥⌘F and ⌘G quietly did nothing at all while their menu rows
+  stayed enabled. They now put the source back on screen first and search
+  it, in a document window and in the writer-mode book window alike,
+  exactly as choosing a private note from the Go menu has always done.
+  Bringing the source back is a detour, not a choice of layout: the
+  document — and the book — still opens in Preview the next time.
+- **`.mdown`, `.markdn` and `.mdtext` were never actually associated with
+  md.** The app listed them against Markdown's own identifier,
+  `net.daringfireball.markdown`, but macOS declares that identifier itself —
+  with only `.md` and `.markdown` — and a system declaration takes
+  precedence over an app's copy of it: the copy was registered inactive and
+  its extra extensions silently dropped, so those files never offered md in
+  Finder's Open With menu. They are now declared under an identifier md
+  owns, one that conforms to Markdown, which is what the system honours.
+  `.markdown` moved there with them: the iOS app found that iOS 26 knows
+  Markdown only as `.md`, so there even `.markdown` was unassociated, and
+  the two apps keep identical declarations. On macOS, which lists both, a
+  `.markdown` file still resolves to the system's Markdown type; only `.md`
+  stays on the imported identifier.
+- **Undo right after a capital left the letter selected.** ⌘Z after md
+  had capitalized a letter did take just the capital back — but the
+  lowercase letter it restored came back *selected*, the way select-and-
+  type comes back, so the next letter typed replaced it: undo the `M` of
+  `md`, type on, and the `m` was gone. The caret now lands after the
+  restored letter, and after the capital when the step is redone, so
+  typing on keeps what undo gave back. Only the document window showed
+  it; a view outside a live window kept the caret all along, which is why
+  the typing tests never caught it.
+- **A file md could not open brought up the book window.** Asking md to
+  open something it does not read — a `.dot` file, which is Word's, or
+  a PlantUML spelling another app's declaration has left unassociated —
+  put the book window on screen, empty or showing whatever book was
+  last open, and said nothing about the file. SwiftUI hands an open
+  request the document group declines to the next scene that takes
+  external events, and the book window took them all. It no longer
+  does; the request stays with the document architecture, and the book
+  window opens only from the Book menu, as it always was meant to.
+- **A preview whose web process died stayed blank until you switched
+  modes.** The preview pane renders inside a web content process of its
+  own, and that process can be killed from under it — by memory pressure,
+  by a WebKit update, or by a diagram that runs the layout engine out of
+  room. Nothing reloaded it: the pane simply went empty, with no hint that
+  the document was still perfectly fine. It now loads itself again. If it
+  dies a second time with no successful render in between — a document
+  that kills the process every time it is drawn — md stops rather than
+  looping, and says so in one quiet line on the paper; that is all the
+  recovery there is. An edit lifts the notice and buys one more attempt
+  rather than a fresh pair, so typing in Split cannot keep a document
+  that cannot render reloading for ever; only a page that actually
+  rendered starts the count over. What counts as a successful render is
+  the whole page — every formula, every highlighted block and every
+  diagram drawn — and not merely a page that loaded: the diagrams run
+  after the loading is over, so a document that kills the process while
+  drawing one would otherwise have reloaded for ever. A preview that is
+  merely *slow* is left alone: a long PlantUML or Graphviz layout looks
+  exactly like a hung process, and reloading would kill a drawing that was
+  about to appear.
+
 ## [1.4] — 2026-08-29
 
 ### Added

@@ -678,6 +678,9 @@ struct BookArticleEditor: View {
     /// Links the panes' scrolling in Split, exactly as in a document
     /// window (identity-stable; the panes register themselves on it).
     @State private var scrollSync = ScrollSync()
+    /// The preview's recovery state, outliving the pane (see `PreviewRecovery`);
+    /// keyed by article inside, so a give-up belongs to the article that caused it.
+    @State private var previewRecovery = PreviewRecovery()
 
     /// The layout on screen: the remembered one, unless a jump is overriding it.
     private var mode: DocumentView.Mode {
@@ -762,7 +765,8 @@ struct BookArticleEditor: View {
                             if previewNavigation?.id == handled { previewNavigation = nil }
                         },
                         documentToken: session.editingURL,
-                        scrollSync: scrollSync)
+                        scrollSync: scrollSync,
+                        recovery: previewRecovery)
     }
 
     /// Words and characters for the author; save trouble only when there

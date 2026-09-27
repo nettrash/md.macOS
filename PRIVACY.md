@@ -32,7 +32,9 @@ Apple's privacy terms, not ours.
 
 The app stores a few small settings on your Mac, through the standard
 system preferences and window-restoration stores: your last-used
-Edit / Split / Preview layout, whether a book opens its articles in
+Edit / Split / Preview layout, the two Edit ▸ Typing switches (whether
+Return continues lists and tables, and whether sentences are
+capitalized), whether a book opens its articles in
 separate windows and — if you use writer mode — a security-scoped bookmark
 to the book folder you chose, plus which article in it you had open last,
 so the book reopens where you left it. A security-scoped bookmark is
