@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+		Quick Look runs this extension in its own App Sandbox, reading only
+		the file it is asked to preview (which Quick Look grants) and the
+		containing md.app's bundled engines.
+	-->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.files.user-selected.read-only</key>
+	<true/>
+	<!--
+		Required for the same reason as md.app's own copy: under the App
+		Sandbox, WKWebView's WebContent helper is killed at launch without the
+		network-client entitlement (measured for this extension on macOS 27:
+		"web content process terminated", and the preview stays blank). It
+		grants no network use: the page the extension shows loads only from
+		its private mdassets:// scheme, and a WKContentRuleList blocks every
+		http and https load before it is made.
+	-->
+	<key>com.apple.security.network.client</key>
+	<true/>
+</dict>
+</plist>
