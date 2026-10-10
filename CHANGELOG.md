@@ -9,6 +9,18 @@ a scheme post-action (`agvtool bump`) and is not tracked here.
 
 ## [1.6] — 2026-10-10
 
+### Fixed
+
+- **Large PlantUML diagrams render.** A diagram wider or taller than 4096
+  pixels — a sequence diagram with a hundred participants, say — used to
+  stop at "Diagram too large for browser rendering". The bundled engine's
+  size gate is raised exactly as md for VS Code raised it, so the two
+  copies of `plantuml.js` are byte-identical again; the preview and the
+  exports keep the SVG, and an EPUB snapshot is still capped at the page's
+  width. A pin test fails if a future engine update brings the gate back,
+  and a render test draws a 120-participant diagram past the old limit.
+  (#10)
+
 ## [1.5] — 2026-09-23
 
 ### Added

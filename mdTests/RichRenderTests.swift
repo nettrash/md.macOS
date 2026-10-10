@@ -86,6 +86,41 @@ final class RichRenderTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(plantuml, 1, "PlantUML should render an SVG")
     }
 
+    // MARK: PlantUML past 4096 px (1.6)
+
+    /// The bundled engine's 4096 px gate is raised (see `PlantUMLLimitTests`);
+    /// this is the render that proves it on WebKit: a 120-participant sequence
+    /// diagram — wider than the old gate — becomes an SVG instead of "Diagram
+    /// too large for browser rendering".
+    func testAPlantUMLDiagramWiderThan4096PixelsRenders() async throws {
+        let participants = (0..<120).map { "Participant\($0)" }
+        let lines = ["@startuml"] + participants.map { "participant \($0)" }
+            + (0..<119).map { "\(participants[$0]) -> \(participants[$0 + 1]) : step \($0)" } + ["@enduml"]
+        let source = "```plantuml\n" + lines.joined(separator: "\n") + "\n```\n"
+
+        let handler = MdAssetSchemeHandler()
+        handler.html = MarkdownHTML.document(source, title: "wide", dark: false)
+        let config = WKWebViewConfiguration()
+        config.setURLSchemeHandler(handler, forURLScheme: MdAssetSchemeHandler.scheme)
+        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 1200), configuration: config)
+        let window = NSWindow(contentRect: NSRect(x: -3000, y: 0, width: 800, height: 1200),
+                              styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = webView
+        window.orderBack(nil)
+        defer { window.contentView = nil }
+
+        webView.load(URLRequest(url: MdAssetSchemeHandler.indexURL))
+        try await waitForRenderComplete(webView, timeout: 60)
+
+        let svgs = try await evalCount(webView, "document.querySelectorAll('.plantuml svg').length")
+        XCTAssertEqual(svgs, 1)
+        let width = try await evalCount(webView,
+            "parseInt(document.querySelector('.plantuml svg').getAttribute('width') || '0', 10)")
+        XCTAssertGreaterThan(width, 4096, "the diagram is past the old gate")
+        let tooLarge = try await evalCount(webView, "document.body.innerText.includes('too large') ? 1 : 0")
+        XCTAssertEqual(tooLarge, 0)
+    }
+
     // MARK: mhchem — `\ce{}` chemistry rides the existing KaTeX pipeline
 
     /// Proof that mhchem actually loaded and matches the bundled KaTeX. With
