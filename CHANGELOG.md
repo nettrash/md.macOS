@@ -9,6 +9,21 @@ a scheme post-action (`agvtool bump`) and is not tracked here.
 
 ## [1.6] — 2026-10-10
 
+### Added
+
+- **An EPUB carries its author, language, date, description, series and
+  cover.** File ▸ Export ▸ EPUB… reads them from the document's front
+  matter — `author`, `language`, `date`, `description`, `series` and
+  `series_index`, matched as `title` is — instead of the fixed `en` and
+  nothing else every md EPUB carried. A language that is not a tag stays
+  `en`; a date that is not a real W3C date (`2026-10-10`, `2026-10`,
+  `2026-10-10T09:30Z`) is left out. `cover:` puts an image on the book when
+  md can read it — a file beside the document, an `https:` image or a
+  `data:` image, in PNG, JPEG, GIF or WebP — and is skipped silently
+  otherwise, with no new permission prompt. All five md EPUB writers change
+  together and write the same lines; a book's EPUB and a document without
+  front matter are unchanged. (#11)
+
 ### Fixed
 
 - **Large PlantUML diagrams render.** A diagram wider or taller than 4096

@@ -1144,6 +1144,26 @@ enum DocumentExport {
     /// sitting beside the document and named to match an image ref could
     /// otherwise point anywhere on disk and pass the prefix test. Resolving
     /// both sides first means the check compares the real locations.
+    /// The front matter's `cover:` image, when md can read it and it is a PNG,
+    /// JPEG, GIF or WebP; otherwise nil and the book has no cover — silently,
+    /// and with no new permission prompt. A `data:` image is decoded, an
+    /// `https:` one fetched (15 s, 20 MB, https throughout — the sandbox's
+    /// existing `network.client`), and a relative path read beside the saved
+    /// document with the TextBundle export's containment, which succeeds only
+    /// where md already has access to that folder.
+    static func readCover(_ value: String?, besideDocumentAt fileURL: URL?) async -> EpubCover? {
+        switch EpubMetadataReader.coverReference(value) {
+        case nil:
+            return nil
+        case .data(let data):
+            return EpubMetadataReader.recogniseCover(data)
+        case .https(let url):
+            return await EpubMetadataReader.fetchCover(url)
+        case .local(let path):
+            return EpubMetadataReader.recogniseCover(readAsset(path, besideDocumentAt: fileURL))
+        }
+    }
+
     private static func readAsset(_ relativePath: String, besideDocumentAt fileURL: URL?) -> Data? {
         guard let folder = fileURL?.deletingLastPathComponent()
             .resolvingSymlinksInPath().standardizedFileURL else { return nil }
@@ -1207,7 +1227,11 @@ enum DocumentExport {
     /// in an `NSSavePanel`, which `files.user-selected.read-write` already
     /// covers — the same grant the book EPUB and the PDF / HTML exports write
     /// under.
-    static func exportDocumentEPUB(source: String, fileName: String) async {
+    ///
+    /// The front matter also supplies the package document's metadata and,
+    /// when `cover:` names an image md can read, its cover (`readCover`).
+    /// `fileURL` is the saved document, for a cover that sits beside it.
+    static func exportDocumentEPUB(source: String, fileName: String, fileURL: URL? = nil) async {
         let title = EPUBExport.documentTitle(
             frontMatter: MarkdownParser.frontMatter(of: source), fileName: fileName)
         let panel = NSSavePanel()
@@ -1222,7 +1246,10 @@ enum DocumentExport {
         }
         guard response == .OK, let url = panel.url else { return }
         do {
-            let data = try await EPUBExport.buildDocument(source: source, title: title)
+            let cover = await readCover(
+                EpubMetadataReader.fieldValue(MarkdownParser.frontMatter(of: source), "cover"),
+                besideDocumentAt: fileURL)
+            let data = try await EPUBExport.buildDocument(source: source, title: title, cover: cover)
             try data.write(to: url, options: .atomic)
         } catch {
             let alert = NSAlert()
@@ -1397,7 +1424,7 @@ enum EPUBExport {
     /// page here to suppress — the document is assembled directly as a single
     /// `content.xhtml` unit whose spine and nav both name it.
     @MainActor
-    static func buildDocument(source: String, title: String) async throws -> Data {
+    static func buildDocument(source: String, title: String, cover: EpubCover? = nil) async throws -> Data {
         let document = MarkdownHTML.document(source, title: title, dark: false, export: true)
         var body = bodyHTML(of: document)
         var images: [(file: String, data: Data)] = []
@@ -1411,7 +1438,10 @@ enum EPUBExport {
         }
         let entries = documentEntries(title: title, body: xhtmlBody(body), images: images,
                                       outline: MarkdownParser.outline(source),
-                                      modified: modifiedNow())
+                                      modified: modifiedNow(),
+                                      metadata: EpubMetadataReader.metadata(
+                                        from: MarkdownParser.frontMatter(of: source)),
+                                      cover: cover)
         // Same stored-zip container as `archive`; the pure `documentEntries`
         // is the seam the tests drive, so the packing runs through one list.
         var zip = EPUBZipWriter()
@@ -1484,7 +1514,9 @@ enum EPUBExport {
     /// (`xhtmlBody(bodyHTML(of:))`), the same form `articleUnit` wraps.
     static func documentEntries(title: String, body: String,
                                 images: [(file: String, data: Data)],
-                                outline: [OutlineEntry], modified: String)
+                                outline: [OutlineEntry], modified: String,
+                                metadata: EpubMetadata = .defaults,
+                                cover: EpubCover? = nil)
         -> [(name: String, data: Data)] {
         let contentFile = "content.xhtml"
         let unit = Unit(file: contentFile, title: title,
@@ -1508,7 +1540,8 @@ enum EPUBExport {
         // carries — today that means a ```plot fence.
         let opfString = opf(title: title, identifier: stableIdentifier(forTitle: title),
                             modified: modified, units: [unit.file], images: images.map(\.file),
-                            svgUnits: body.contains("<svg") ? [0] : [])
+                            svgUnits: body.contains("<svg") ? [0] : [],
+                            metadata: metadata, cover: cover)
         var out: [(name: String, data: Data)] = [
             ("mimetype", Data(mimetype.utf8)),
             ("META-INF/container.xml", Data(containerXML.utf8)),
@@ -1518,6 +1551,7 @@ enum EPUBExport {
             ("OEBPS/\(unit.file)", Data(unit.xhtml.utf8)),
         ]
         out += images.map { ("OEBPS/\($0.file)", $0.data) }
+        if let cover { out.append(("OEBPS/\(cover.href)", cover.data)) }
         return out
     }
 
@@ -1688,9 +1722,15 @@ enum EPUBExport {
     /// ```plot fence no EPUB this app produced had ever contained one (Mermaid,
     /// Graphviz and PlantUML all arrive as PNG snapshots), so every item was
     /// emitted bare and still is when the set is empty.
+    ///
+    /// `metadata` and `cover` are a single document's front matter (see
+    /// `EpubMetadata.swift`); a book passes neither, and the defaults write
+    /// exactly the package document every md EPUB carried before 1.6.
     static func opf(title: String, identifier: String, modified: String,
                     units: [String], images: [String],
-                    svgUnits: Set<Int> = []) -> String {
+                    svgUnits: Set<Int> = [],
+                    metadata: EpubMetadata = .defaults,
+                    cover: EpubCover? = nil) -> String {
         var manifest = "<item id=\"nav\" href=\"nav.xhtml\" media-type=\"application/xhtml+xml\" properties=\"nav\"/>\n"
         manifest += "<item id=\"css\" href=\"style.css\" media-type=\"text/css\"/>\n"
         for (index, file) in units.enumerated() {
@@ -1700,6 +1740,8 @@ enum EPUBExport {
         for (index, file) in images.enumerated() {
             manifest += "<item id=\"i\(index)\" href=\"\(file)\" media-type=\"image/png\"/>\n"
         }
+        if let cover { manifest += EpubMetadataReader.coverItem(cover) + "\n" }
+        let metadataLines = EpubMetadataReader.metadataLines(metadata, cover: cover).joined(separator: "\n")
         let spine = units.indices.map { "<itemref idref=\"u\($0)\"/>" }.joined(separator: "\n")
         return """
         <?xml version="1.0" encoding="UTF-8"?>
@@ -1707,7 +1749,7 @@ enum EPUBExport {
         <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
         <dc:identifier id="bookid">\(identifier)</dc:identifier>
         <dc:title>\(xmlEscape(title))</dc:title>
-        <dc:language>en</dc:language>
+        \(metadataLines)
         <meta property="dcterms:modified">\(modified)</meta>
         </metadata>
         <manifest>

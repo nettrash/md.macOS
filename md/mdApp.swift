@@ -717,7 +717,8 @@ struct DocumentCommands: Commands {
                 Button("EPUB…") {
                     if let document {
                         Task { await DocumentExport.exportDocumentEPUB(source: document.text,
-                                                                       fileName: document.title) }
+                                                                       fileName: document.title,
+                                                                       fileURL: document.fileURL) }
                     }
                 }
                 .disabled(document == nil)
