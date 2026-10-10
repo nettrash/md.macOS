@@ -116,6 +116,13 @@ Mermaid, Graphviz, PlantUML, and highlight.js for code).
   *Capitalize Sentences* — and a flip applies to every open window at
   once. They answer every keystroke exactly as the iOS, Android and
   Windows editions do, from one shared specification.
+- **Format menu.** Bold ⌘B, Italic ⌘I, Code ⇧⌘C, Strikethrough ⇧⌘X,
+  Link ⌘K, Heading 1–6 ⌥⌘1–6, Bullet List ⇧⌘L, Task List ⇧⌘T, Quote ⌘'
+  and Indent / Outdent ⌘] / ⌘[ — each a toggle (⌘B on bold text takes the
+  bold off) and one Undo step, rewriting the selection exactly as the
+  iPhone, iPad, Android and Windows editors do. Typing `*`, `_`, a backtick
+  or `$` with text selected wraps it instead of replacing it; *Wrap
+  Selection When Typing* in Edit ▸ Typing turns that off.
 - **Print & share.** Print or share the *rendered* document as a themed
   PDF (matching light / dark) — at A4, A5, US Letter or Legal, or a
   print-on-demand trim size (6 × 9″, 5 × 8″, 5.5 × 8.5″), the choice

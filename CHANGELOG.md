@@ -23,6 +23,18 @@ a scheme post-action (`agvtool bump`) and is not tracked here.
   otherwise, with no new permission prompt. All five md EPUB writers change
   together and write the same lines; a book's EPUB and a document without
   front matter are unchanged. (#11)
+- **A Format menu.** Bold ⌘B, Italic ⌘I, Code ⇧⌘C, Strikethrough ⇧⌘X,
+  Link ⌘K, Heading ▸ 1–6 on ⌥⌘1–6, Bullet List ⇧⌘L, Task List ⇧⌘T,
+  Quote ⌘' and Indent / Outdent ⌘] / ⌘[ — the chords every md app now
+  shares. Quote is ⌘' rather than ⇧⌘Q, which is the Mac's Log Out. Every
+  command toggles and is one Undo step, and they all follow one shared
+  specification and vector file (`MarkdownFormatting.swift`,
+  `formatting-vectors.json`), so a selection is rewritten exactly as on
+  iPhone, iPad, Android and Windows — around surrounding blanks, inside
+  `***bold italic***`, across lines. Typing `*`, `_`, a backtick or `$`
+  with text selected now wraps the selection instead of replacing it;
+  *Wrap Selection When Typing * _ ` $* in Edit ▸ Typing turns that off.
+  (#12)
 
 ### Fixed
 
