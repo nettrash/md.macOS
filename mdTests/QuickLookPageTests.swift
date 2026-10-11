@@ -59,7 +59,8 @@ final class QuickLookPageTests: XCTestCase {
         let page = URL(string: "mdassets://md/index.html")!
         XCTAssertTrue(QuickLookPage.allowsNavigation(to: page, page: page))
         XCTAssertTrue(QuickLookPage.allowsNavigation(to: URL(string: "mdassets://md/index.html#install"), page: page))
-        for link in ["mdassets://md/rich/md-init.js", "mdassets://other/missing", "mdassets://md/index.html?x=1",
+        for link in ["mdassets://md/rich/md-init.js", "mdassets://md/other.md", "mdassets://other/missing",
+                     "mdassets://md/index.html?x=1",
                      "https://example.com/", "http://md/index.html", "file:///etc/hosts"] {
             XCTAssertFalse(QuickLookPage.allowsNavigation(to: URL(string: link), page: page), link)
         }
