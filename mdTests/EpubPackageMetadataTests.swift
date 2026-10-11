@@ -91,4 +91,25 @@ final class EpubPackageMetadataTests: XCTestCase {
         let untitled = await DocumentExport.readCover("cover.png", besideDocumentAt: nil)
         XCTAssertNil(untitled)
     }
+
+    func testReadCoverRefusesAFilePastTheCap() async throws {
+        let docs = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: docs, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: docs) }
+        let document = docs.appendingPathComponent("notes.md")
+        try Data("# n\n".utf8).write(to: document)
+        let big = docs.appendingPathComponent("big.png")
+        try png.write(to: big)
+        let handle = try FileHandle(forWritingTo: big)
+        try handle.truncate(atOffset: UInt64(EpubMetadataReader.maxCoverBytes))
+        try handle.close()
+
+        let atTheCap = await DocumentExport.readCover("big.png", besideDocumentAt: document)
+        XCTAssertEqual(atTheCap?.data.count, EpubMetadataReader.maxCoverBytes)
+        let past = try FileHandle(forWritingTo: big)
+        try past.truncate(atOffset: UInt64(EpubMetadataReader.maxCoverBytes) + 1)
+        try past.close()
+        let pastTheCap = await DocumentExport.readCover("big.png", besideDocumentAt: document)
+        XCTAssertNil(pastTheCap)
+    }
 }

@@ -99,7 +99,7 @@ extension NSTextView {
     func wrapTypedIfEnabled(_ typed: String, defaults: UserDefaults = .standard) -> Bool {
         guard FormattingSettings.wrapSelection(in: defaults), !hasMarkedText() else { return false }
         let selection = selectedRange()
-        guard let edit = MarkdownFormatting.wrapTyped(string, selectionStart: selection.location,
+        guard selection.length > 0, let edit = MarkdownFormatting.wrapTyped(string, selectionStart: selection.location,
                                                       selectionEnd: NSMaxRange(selection), typed: typed) else { return false }
         apply(edit, actionName: "Typing")
         return true
@@ -118,7 +118,16 @@ extension NSTextView {
             undoManager?.endUndoGrouping()
         }
         guard shouldChangeText(in: range, replacementString: edit.text) else { return }
+        // A command is not the writer deleting the capital md just made: an
+        // edit that takes it along (`Word` → `**Word**`) would arm the
+        // delete-and-retype override (§3.4) where the word began, and the
+        // next word typed there would skip the sentence rule. Only an
+        // override this edit armed is dropped; one already armed, or a
+        // capital the edit merely moves, is left as it was.
+        let smart = self as? SmartTextView
+        let wasArmed = smart?.capitalOverride.isArmed ?? false
         textStorage?.replaceCharacters(in: range, with: edit.text)
+        if let smart, !wasArmed, smart.capitalOverride.isArmed { smart.clearCapitalTracking() }
         didChangeText()
         let selection = NSRange(location: edit.selectionStart, length: edit.selectionEnd - edit.selectionStart)
         setSelectedRange(selection)

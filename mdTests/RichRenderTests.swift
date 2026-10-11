@@ -98,27 +98,15 @@ final class RichRenderTests: XCTestCase {
             + (0..<119).map { "\(participants[$0]) -> \(participants[$0 + 1]) : step \($0)" } + ["@enduml"]
         let source = "```plantuml\n" + lines.joined(separator: "\n") + "\n```\n"
 
-        let handler = MdAssetSchemeHandler()
-        handler.html = MarkdownHTML.document(source, title: "wide", dark: false)
-        let config = WKWebViewConfiguration()
-        config.setURLSchemeHandler(handler, forURLScheme: MdAssetSchemeHandler.scheme)
-        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 1200), configuration: config)
-        let window = NSWindow(contentRect: NSRect(x: -3000, y: 0, width: 800, height: 1200),
-                              styleMask: [.borderless], backing: .buffered, defer: false)
-        window.contentView = webView
-        window.orderBack(nil)
-        defer { window.contentView = nil }
-
-        webView.load(URLRequest(url: MdAssetSchemeHandler.indexURL))
-        try await waitForRenderComplete(webView, timeout: 60)
-
-        let svgs = try await evalCount(webView, "document.querySelectorAll('.plantuml svg').length")
-        XCTAssertEqual(svgs, 1)
-        let width = try await evalCount(webView,
-            "parseInt(document.querySelector('.plantuml svg').getAttribute('width') || '0', 10)")
-        XCTAssertGreaterThan(width, 4096, "the diagram is past the old gate")
-        let tooLarge = try await evalCount(webView, "document.body.innerText.includes('too large') ? 1 : 0")
-        XCTAssertEqual(tooLarge, 0)
+        try await withRenderedWebView(source, timeout: 60) { webView in
+            let svgs = try await evalCount(webView, "document.querySelectorAll('.plantuml svg').length")
+            XCTAssertEqual(svgs, 1)
+            let width = try await evalCount(webView,
+                "parseInt(document.querySelector('.plantuml svg').getAttribute('width') || '0', 10)")
+            XCTAssertGreaterThan(width, 4096, "the diagram is past the old gate")
+            let tooLarge = try await evalCount(webView, "document.body.innerText.includes('too large') ? 1 : 0")
+            XCTAssertEqual(tooLarge, 0)
+        }
     }
 
     // MARK: mhchem — `\ce{}` chemistry rides the existing KaTeX pipeline

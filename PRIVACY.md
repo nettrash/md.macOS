@@ -68,7 +68,9 @@ entitlement only because the system's web renderer will not start inside the
 App Sandbox without it.
 The same goes for an EPUB export whose front matter says
 `cover: https://…`: the export fetches that one image to put it on the
-book, and nothing else.
+book, and nothing else. If that host redirects the request, md follows at
+most five redirects, and only to `https` addresses; each host along the
+way sees your IP address in the same way.
 
 Everything else is built on your Mac: the Markdown renderer, and the math
 and diagram engines (KaTeX, Mermaid, Graphviz, PlantUML) are bundled inside
