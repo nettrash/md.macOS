@@ -1132,18 +1132,6 @@ enum DocumentExport {
         }
     }
 
-    /// Read an image the document references by relative path, if it sits
-    /// beside the (saved) document. The resolved path is constrained to the
-    /// document's own folder — a `../…` ref that would climb out is treated as
-    /// not found (and so left untouched), the same containment the preview's
-    /// asset scheme handler enforces, so an export never reaches for a file
-    /// outside the document's directory.
-    ///
-    /// Symlinks are resolved before the containment check, not just `..`:
-    /// `standardizedFileURL` collapses `..` but follows no links, so a symlink
-    /// sitting beside the document and named to match an image ref could
-    /// otherwise point anywhere on disk and pass the prefix test. Resolving
-    /// both sides first means the check compares the real locations.
     /// The front matter's `cover:` image, when md can read it and it is a PNG,
     /// JPEG, GIF or WebP; otherwise nil and the book has no cover — silently,
     /// and with no new permission prompt. A `data:` image is decoded, an
@@ -1160,11 +1148,28 @@ enum DocumentExport {
         case .https(let url):
             return await EpubMetadataReader.fetchCover(url)
         case .local(let path):
-            return EpubMetadataReader.recogniseCover(readAsset(path, besideDocumentAt: fileURL))
+            return EpubMetadataReader.recogniseCover(
+                readAsset(path, besideDocumentAt: fileURL, limit: EpubMetadataReader.maxCoverBytes))
         }
     }
 
-    private static func readAsset(_ relativePath: String, besideDocumentAt fileURL: URL?) -> Data? {
+    /// Read an image the document references by relative path, if it sits
+    /// beside the (saved) document. The resolved path is constrained to the
+    /// document's own folder — a `../…` ref that would climb out is treated as
+    /// not found (and so left untouched), the same containment the preview's
+    /// asset scheme handler enforces, so an export never reaches for a file
+    /// outside the document's directory.
+    ///
+    /// Symlinks are resolved before the containment check, not just `..`:
+    /// `standardizedFileURL` collapses `..` but follows no links, so a symlink
+    /// sitting beside the document and named to match an image ref could
+    /// otherwise point anywhere on disk and pass the prefix test. Resolving
+    /// both sides first means the check compares the real locations.
+    ///
+    /// With a `limit` — the cover's — no more than one byte past it is ever
+    /// read, so a huge file named as `cover:` costs nothing before it is refused.
+    private static func readAsset(_ relativePath: String, besideDocumentAt fileURL: URL?,
+                                  limit: Int? = nil) -> Data? {
         guard let folder = fileURL?.deletingLastPathComponent()
             .resolvingSymlinksInPath().standardizedFileURL else { return nil }
         let candidate = folder.appendingPathComponent(relativePath)
@@ -1174,7 +1179,11 @@ enum DocumentExport {
         // The document's own folder may be security-scoped (opened in place).
         let scoped = fileURL!.startAccessingSecurityScopedResource()
         defer { if scoped { fileURL!.stopAccessingSecurityScopedResource() } }
-        return try? Data(contentsOf: candidate)
+        guard let limit else { return try? Data(contentsOf: candidate) }
+        guard let handle = try? FileHandle(forReadingFrom: candidate) else { return nil }
+        defer { try? handle.close() }
+        guard let data = try? handle.read(upToCount: limit + 1), data.count <= limit else { return nil }
+        return data
     }
 
     // MARK: - EPUB
