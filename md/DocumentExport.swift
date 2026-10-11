@@ -577,13 +577,15 @@ final class WebRenderer: NSObject, WKNavigationDelegate {
     /// A PNG snapshot of `rect` (view points) at double resolution, for
     /// crisp formulas and diagrams in the EPUB. `snapshotWidth` is in
     /// points and WebKit re-renders the region at the implied scale, so
-    /// doubling it yields a genuine 2× image rather than an upscale.
+    /// doubling it yields a genuine 2× image rather than an upscale — less
+    /// than double for a block so tall that 2× would pass the 16 Mpx budget
+    /// (`EPUBExport.snapshotScale`).
     func snapshotPNG(of rect: CGRect) async throws -> Data {
         let clamped = CGRect(x: rect.minX, y: rect.minY,
                              width: max(rect.width, 1), height: max(rect.height, 1))
         let configuration = WKSnapshotConfiguration()
         configuration.rect = clamped
-        configuration.snapshotWidth = NSNumber(value: Double(clamped.width) * 2)
+        configuration.snapshotWidth = NSNumber(value: Double(clamped.width * EPUBExport.snapshotScale(for: clamped.size)))
         let image: NSImage = try await withCheckedThrowingContinuation { continuation in
             webView.takeSnapshot(with: configuration) { image, error in
                 if let image {
@@ -1300,6 +1302,18 @@ struct EPUBBook {
 /// photographs rich content in the offscreen `WebRenderer`) is pure
 /// string work, kept static and non-isolated so it is directly testable.
 enum EPUBExport {
+
+    /// The most pixels one EPUB snapshot may have: 16 Mpx, about what the
+    /// old 4096 px PlantUML gate let a page-wide diagram cost (1.6 raised the
+    /// gate, so nothing else bounds a tall one any more).
+    static let maxSnapshotPixels: CGFloat = 16 * 1024 * 1024
+
+    /// The snapshot scale for a block of `size` points: 2× for crispness,
+    /// less when 2× would pass `maxSnapshotPixels`.
+    static func snapshotScale(for size: CGSize, preferred: CGFloat = 2) -> CGFloat {
+        let area = max(size.width, 1) * max(size.height, 1)
+        return min(preferred, (maxSnapshotPixels / area).squareRoot())
+    }
 
     /// One spine entry: its file name inside OEBPS and the finished
     /// XHTML document that goes there.
