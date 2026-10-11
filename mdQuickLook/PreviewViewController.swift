@@ -104,6 +104,15 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
         }
     }
 
+    /// The most text a preview reads, in bytes: a document past it is left
+    /// to the system's own preview. Quick Look runs this extension under a
+    /// tight memory ceiling, and the text is copied several times on its way
+    /// to the page — decoded, rendered, handed to WebKit — so the cap is on
+    /// what is read, before any of that: the file, a bundle's text file, a
+    /// pack's archive and its text entry, stored or deflated. 8 MiB is far
+    /// past any hand-written document.
+    static let maxSourceBytes = 8 * 1024 * 1024
+
     /// The Markdown a file holds: a `.textbundle` folder's `text.md`, a
     /// `.textpack`'s, or the file itself decoded as the app decodes it.
     static func source(of url: URL) -> String? {
@@ -112,11 +121,17 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
         if isDirectory.boolValue {
             // Lazy: only the text file is ever read, never the bundle's assets.
             guard let wrapper = try? FileWrapper(url: url, options: []) else { return nil }
+            let tooLarge = (wrapper.fileWrappers ?? [:]).contains { name, child in
+                ScalarText.hasPrefix(name, "text.")
+                    && (child.fileAttributes[FileAttributeKey.size.rawValue] as? Int ?? 0) > maxSourceBytes
+            }
+            guard !tooLarge else { return nil }
             return TextBundle.textFromBundle(wrapper)?.0
         }
-        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
+        guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= maxSourceBytes,
+              let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
         if url.pathExtension.lowercased() == "textpack" {
-            return TextBundle.textFromPack(data)?.0
+            return TextBundle.textFromPack(data, maxTextBytes: maxSourceBytes)?.0
         }
         return PlainTextCodec.decode(data)?.text
     }
