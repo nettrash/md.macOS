@@ -1815,10 +1815,7 @@ enum EPUBExport {
     }
 
     private static func xmlEscape(_ s: String) -> String {
-        s.replacingOccurrences(of: "&", with: "&amp;")
-            .replacingOccurrences(of: "<", with: "&lt;")
-            .replacingOccurrences(of: ">", with: "&gt;")
-            .replacingOccurrences(of: "\"", with: "&quot;")
+        ScalarText.escapingMarkup(s)
     }
 
     private static func replace(_ pattern: String, _ template: String, in s: String) -> String {
