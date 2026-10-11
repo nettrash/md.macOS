@@ -33,7 +33,7 @@ a scheme post-action (`agvtool bump`) and is not tracked here.
   iPhone, iPad, Android and Windows — around surrounding blanks, inside
   `***bold italic***`, across lines. Typing `*`, `_`, a backtick or `$`
   with text selected now wraps the selection instead of replacing it;
-  *Wrap Selection When Typing * _ ` $* in Edit ▸ Typing turns that off.
+  **Wrap Selection When Typing \* \_ \` $** in Edit ▸ Typing turns that off.
   (#12)
 
 ### Fixed
