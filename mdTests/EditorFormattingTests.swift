@@ -66,13 +66,14 @@ final class EditorFormattingTests: XCTestCase {
         func undoManager(for view: NSTextView) -> UndoManager? { undoManager }
     }
 
-    private func makeEditor(_ text: String, wrap: Bool = true) throws -> (SmartTextView, UndoHost) {
+    private func makeEditor(_ text: String, wrap: Bool = true,
+                            capitalize: Bool = false) throws -> (SmartTextView, UndoHost) {
         let scroll = MarkdownEditor.makeScrollView()
         let view = try XCTUnwrap(scroll.documentView as? SmartTextView)
         let name = "md.format.tests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
         addTeardownBlock { defaults.removePersistentDomain(forName: name) }
-        defaults.set(false, forKey: TypingSettings.capitalizeSentencesKey)
+        defaults.set(capitalize, forKey: TypingSettings.capitalizeSentencesKey)
         defaults.set(wrap, forKey: FormattingSettings.wrapSelectionKey)
         view.defaults = defaults
         let host = UndoHost()
@@ -122,6 +123,44 @@ final class EditorFormattingTests: XCTestCase {
         host.undoManager.beginUndoGrouping()
         body()
         while host.undoManager.groupingLevel > 0 { host.undoManager.endUndoGrouping() }
+    }
+
+    /// Formatting a word md has just capitalized is not the writer deleting
+    /// that capital: `**Word**` must not arm the delete-and-retype override
+    /// (§3.4) where `Word` began, or the next word typed there — straight
+    /// after the command, or after its Undo — would skip the sentence rule.
+    func testFormattingAFreshCapitalLeavesNoOverrideBehind() throws {
+        let noRange = NSRange(location: NSNotFound, length: 0)
+        for viaUndo in [false, true] {
+            let (view, host) = try makeEditor("", capitalize: true)
+            keystroke(host) { view.insertText("word", replacementRange: noRange) }
+            XCTAssertEqual(view.string, "Word")
+            XCTAssertTrue(view.capitalOverride.tracksCapital(at: 0))
+
+            view.setSelectedRange(NSRange(location: 0, length: 4))
+            view.applyFormatting(.bold)
+            XCTAssertEqual(view.string, "**Word**")
+            XCTAssertFalse(view.capitalOverride.isArmed, "the command armed the override")
+            if viaUndo {
+                host.undoManager.undo()
+                XCTAssertEqual(view.string, "Word")
+                XCTAssertFalse(view.capitalOverride.isArmed, "the command's Undo armed the override")
+            }
+
+            view.setSelectedRange(NSRange(location: 0, length: 0))
+            keystroke(host) { view.insertText("big", replacementRange: noRange) }
+            XCTAssertEqual(view.string, viaUndo ? "BigWord" : "Big**Word**", "viaUndo: \(viaUndo)")
+        }
+    }
+
+    func testTypingAWrapOverAFreshCapitalLeavesNoOverrideBehind() throws {
+        let noRange = NSRange(location: NSNotFound, length: 0)
+        let (view, host) = try makeEditor("", capitalize: true)
+        keystroke(host) { view.insertText("word", replacementRange: noRange) }
+        view.setSelectedRange(NSRange(location: 0, length: 4))
+        keystroke(host) { view.insertText("*", replacementRange: noRange) }
+        XCTAssertEqual(view.string, "*Word*")
+        XCTAssertFalse(view.capitalOverride.isArmed)
     }
 
     func testWithTheSettingOffTypingReplacesTheSelection() throws {
