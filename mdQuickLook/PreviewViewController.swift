@@ -87,13 +87,31 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
         pending(error)
     }
 
+    /// Poll for md-init.js's `data-md-render-complete` and finish when it is
+    /// set. Nothing to stop: once Quick Look has been answered — here, by
+    /// the fallback, or by a failure — the poll ends with it.
+    private func waitForRenderComplete(_ webView: WKWebView) {
+        guard pending != nil else { return }
+        webView.evaluateJavaScript("document.documentElement.getAttribute('data-md-render-complete')") {
+            [weak self, weak webView] value, _ in
+            guard let self, let webView else { return }
+            if (value as? String) == "1" {
+                log.info("render complete")
+                self.finish(nil)
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { self.waitForRenderComplete(webView) }
+            }
+        }
+    }
+
     /// The Markdown a file holds: a `.textbundle` folder's `text.md`, a
     /// `.textpack`'s, or the file itself decoded as the app decodes it.
     static func source(of url: URL) -> String? {
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return nil }
         if isDirectory.boolValue {
-            guard let wrapper = try? FileWrapper(url: url, options: .immediate) else { return nil }
+            // Lazy: only the text file is ever read, never the bundle's assets.
+            guard let wrapper = try? FileWrapper(url: url, options: []) else { return nil }
             return TextBundle.textFromBundle(wrapper)?.0
         }
         guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
@@ -106,7 +124,11 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
 
 extension PreviewViewController: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        finish(nil)
+        // The document has loaded, but md-init.js may still be drawing
+        // (Graphviz is asynchronous): Quick Look is told the preview is
+        // ready once the page says it has settled — or, failing that, by
+        // the ten-second fallback `show` set.
+        waitForRenderComplete(webView)
         // What the page became, for Console — the one way to tell a drawn
         // preview from a blank one without looking at it.
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak webView] in
@@ -117,21 +139,22 @@ extension PreviewViewController: WKNavigationDelegate {
             }
         }
     }
-    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { finish(nil) }
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { finish(error) }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!,
                  withError error: Error) { finish(error) }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         log.error("web content process terminated")
-        finish(nil)
+        finish(WKError(.webContentProcessTerminated))
     }
 
     /// Links do nothing inside a preview: an in-page anchor scrolls, and
-    /// anything else is not the preview's to open.
+    /// anything else — the web, or one of the extension's own assets — is
+    /// not the preview's to open.
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        let isOwn = action.request.url?.scheme == QuickLookAssetHandler.scheme
-        decisionHandler(isOwn ? .allow : .cancel)
+        let allowed = QuickLookPage.allowsNavigation(to: action.request.url, page: QuickLookAssetHandler.indexURL)
+        decisionHandler(allowed ? .allow : .cancel)
     }
 }
 

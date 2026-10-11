@@ -4,8 +4,10 @@
 <dict>
 	<!--
 		Quick Look runs this extension in its own App Sandbox, reading only
-		the file it is asked to preview (which Quick Look grants) and the
-		containing md.app's bundled engines.
+		the file it is asked to preview (which Quick Look grants) and its own
+		bundle. The sandbox does not let it read the containing md.app's
+		bundle, so the light engines it uses are copied into the extension's
+		own Resources at build time.
 	-->
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
