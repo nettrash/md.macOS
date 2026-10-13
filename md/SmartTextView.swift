@@ -98,6 +98,13 @@ import AppKit
 
 final class SmartTextView: NSTextView, NSTextStorageDelegate {
 
+    /// Asked first about every typed insertion into the selection, before
+    /// SmartTyping sees it: returns true when it has handled the keystroke
+    /// itself, and SmartTyping then never runs for it. The editor hangs the
+    /// formatting commands' typed wrap here (`wrapTypedIfEnabled`). Nil — the
+    /// default — changes nothing about this view.
+    var interceptsInsertion: ((String) -> Bool)?
+
     /// Where the two typing toggles are read from. `.standard` in the app;
     /// the tests substitute a suite of their own.
     var defaults: UserDefaults = .standard
@@ -220,6 +227,8 @@ final class SmartTextView: NSTextView, NSTextStorageDelegate {
 
     override func insertText(_ string: Any, replacementRange: NSRange) {
         let insertion = (string as? String) ?? (string as? NSAttributedString)?.string ?? ""
+        if replacementRange.location == NSNotFound, !hasMarkedText(),
+           let interceptsInsertion, interceptsInsertion(insertion) { return }
         // The range this insertion replaces, per NSTextInputClient: an
         // explicit range wins; without one, the marked text if any (a
         // dead-key session ending), else the selection. Only the last is
