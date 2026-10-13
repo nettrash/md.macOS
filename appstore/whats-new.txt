@@ -2,7 +2,7 @@ Version 1.6. A Format menu, Quick Look previews in the Finder, and EPUBs that ca
 
 A FORMAT MENU
 • Bold ⌘B, Italic ⌘I, Code ⇧⌘C, Strikethrough ⇧⌘X and Link ⌘K; Heading 1 to 6 on ⌥⌘1 to ⌥⌘6; Bullet List ⇧⌘L, Task List ⇧⌘T and Quote ⌘'; Indent and Outdent on ⌘] and ⌘[.
-• Every command toggles: choose Bold on bold text and it comes off again. Each one is a single undo step.
+• Bold, Italic, Code, Strikethrough, the headings, the lists and Quote toggle: choose Bold on bold text and it comes off again. Link inserts link syntax, and Indent and Outdent add and remove indentation. Every command is a single undo step.
 • A selection is rewritten with care: around the spaces at its edges, inside text that is already bold and italic, and across several lines at once.
 • Typing *, _, a backtick or $ with text selected now wraps the selection instead of replacing it. The Wrap Selection When Typing switch in Edit ▸ Typing turns that off.
 

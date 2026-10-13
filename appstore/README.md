@@ -7,9 +7,9 @@ repo's `play/` folder. One file per field, plain text, paste as-is.
 | File | App Store Connect field | Limit | Current |
 | --- | --- | --- | --- |
 | `promotional-text.txt` | Promotional Text | 170 | 146 |
-| `description.txt` | Description | 4000 | 3900 |
+| `description.txt` | Description | 4000 | 3882 |
 | `keywords.txt` | Keywords | 100 | 99 |
-| `whats-new.txt` | What's New in This Version | 4000 | 2315 |
+| `whats-new.txt` | What's New in This Version | 4000 | 2451 |
 | `review-notes.txt` | App Review Information ▸ Notes | 4000 | 3984 |
 
 Promotional Text can be changed at any time without submitting a new build;
