@@ -1,37 +1,39 @@
-md is a Markdown editor and live previewer for the Mac. This update (1.5) adds find and replace in the editor, typing that continues lists and tables on Return and capitalizes sentences, every Markdown file extension, and a preview that reloads itself if the process drawing it dies.
+md is a Markdown editor and live previewer for the Mac. This update (1.6) adds a Format menu, a Quick Look extension that previews Markdown files in the Finder, and EPUB export that takes author, language, series and cover from a document's front matter.
 
 1. ACCESS — NOTHING TO SET UP
-No account, no sign-in, no registration, no in-app purchases, no subscriptions. Every feature works the moment the app launches, so no demo credentials exist or are needed.
+No account, sign-in, registration, in-app purchase or subscription. Every feature works at launch, so no demo credentials exist or are needed.
 
-No test file is needed: the app ships with sample documents, under File, Examples (Welcome, Formatting, Tables, Code, Images, Math, Diagrams, Writer Tools).
+No test file is needed: the app ships with sample documents under File, Examples (Welcome, Formatting, Tables, Code, Images, Math, Diagrams, Writer Tools).
 
 2. A THREE-MINUTE WALKTHROUGH
-a) File, Examples — open Math to see LaTeX and mhchem chemistry, Diagrams to see Mermaid, Graphviz and PlantUML, and Code to see syntax highlighting. All are drawn on the Mac, offline, by the bundled engines — nothing is fetched to render them.
-b) The File and Share menus offer, beside Export as PDF: a page-size choice (A4, A5, US Letter, US Legal, or a paperback trim), Export as HTML, EPUB, LaTeX and TextBundle, and Export Diagram as SVG. Each writes a file through the standard save panel.
-c) File, Print (Command-P) — prints real A4 pages. The Go menu jumps to any heading and lists the author's private notes.
-d) File, Examples, "Example Book…" — unpacks a small sample book to a folder you choose and opens the book window: chapters and articles in the sidebar, the selected article beside them. The book's share commands compile the whole book to PDF or EPUB.
-e) New in 1.5: Find and Replace is in the Edit menu under Find (Command-F), the two typing switches under Typing, and every Markdown extension now opens.
+a) File, Examples — open Math for LaTeX and mhchem chemistry, Diagrams for Mermaid, Graphviz and PlantUML, Code for syntax highlighting. All are drawn on the Mac, offline, by the bundled engines.
+b) The File and Share menus offer Export as PDF with a page-size choice, Export as HTML, EPUB, LaTeX and TextBundle, and Export Diagram as SVG, each through the standard save panel.
+c) File, Print (Command-P) prints real pages. The Go menu jumps to any heading and lists the author's private notes.
+d) File, Examples, "Example Book…" unpacks a small sample book to a folder you choose and opens the book window: chapters and articles in the sidebar, the selected article beside them. The book can be compiled to PDF or EPUB.
+e) New in 1.6: select text and use the Format menu (Command-B, Command-I, Option-Command-1 for a heading). Save any document to the Desktop, select it in the Finder and press Space for the Quick Look preview. Add lines such as "author: A. Writer" and "language: fr" between two "---" lines at the top of a document, then File, Export, EPUB: the book's details carry them.
 
-A book is nothing more than a folder the user picks: its subfolders are chapters, its Markdown files are articles. The app creates no hidden files or sidecar metadata.
+A book is only a folder the user picks: subfolders are chapters, Markdown files are articles. The app creates no hidden files or sidecar metadata.
 
 3. PURPOSE AND AUDIENCE
-Writers, developers and students who keep notes, documentation or a book in plain Markdown files and want to see, print and export the finished page. Nothing is shared, published or hosted anywhere, so there is nothing to moderate, report or block.
+Writers, developers and students who keep notes, documentation or a book in Markdown and want to see, print and export the page. Nothing is shared, published or hosted, so there is nothing to moderate, report or block.
 
 4. NETWORK AND EXTERNAL SERVICES
-The app contacts no servers of ours; there are none. It has no analytics, no advertising, no tracking, and it collects no data (the Privacy Nutrition Label answer is "Data Not Collected").
+The app contacts no servers of ours; there are none. No analytics, advertising or tracking, and no data collected (Privacy Nutrition Label: "Data Not Collected").
 
-The sandbox carries the network-client entitlement for two reasons. First, WKWebView — which draws the preview and produces the printed page, the PDF and the EPUB — will not launch inside the App Sandbox without it. Second, if a document references an image by remote URL, the renderer fetches it so it can be shown and printed, from the host named in the user's own document. Nothing else is ever sent or fetched.
+The sandbox carries the network-client entitlement because WKWebView, which draws the preview and produces the printout, PDF and EPUB, will not launch in the App Sandbox without it. The app then fetches only what the user's own document names by URL: an image it references, so it can be shown and printed, and, when an EPUB is exported with a front-matter "cover:" https URL, that one image (at most 20 MB in 15 seconds, at most five redirects, https only).
+
+The Quick Look extension is sandboxed on its own, with network-client for the same WKWebView reason, and blocks every remote load: a previewed document's remote images are not fetched.
 
 5. NO DOWNLOADED CODE (2.5.2)
-Math, chemistry, diagrams and code highlighting are drawn by open-source JavaScript engines bundled inside the app and served to WKWebView from a private, offline scheme: KaTeX (with its mhchem extension), Mermaid, Graphviz, PlantUML, and highlight.js. No executable code is downloaded or updated at runtime, and no interpreted code comes from any server. There are no third-party Swift packages or SDKs.
+Math, chemistry, diagrams and highlighting are drawn by open-source JavaScript engines bundled in the app and served to WKWebView from a private offline scheme: KaTeX with mhchem, Mermaid, Graphviz, PlantUML and highlight.js. No executable code is downloaded or updated at runtime. There are no third-party Swift packages or SDKs.
 
 6. PERMISSIONS
-None are requested: no camera, microphone, location, contacts, calendars, or tracking prompt. The app is sandboxed with user-selected file access (the documents the user opens or saves, and the folder chosen as a book), the network-client entitlement described above, and printing.
+None requested: no camera, microphone, location, contacts, calendars or tracking prompt. The app is sandboxed with user-selected file access (documents the user opens or saves, and a folder chosen as a book), the network-client entitlement described above, and printing.
 
 7. REGIONAL DIFFERENCES, REGULATED CONTENT
-None. The app behaves identically everywhere, contains no regulated or age-restricted content, and includes no third-party trademarked material beyond the open-source engines named above, each under its own open-source licence.
+None. The app behaves identically everywhere, with no regulated or age-restricted content and no trademarked material beyond the open-source engines above.
 
-Encryption: ITSAppUsesNonExemptEncryption is false — the app implements no encryption.
+Encryption: ITSAppUsesNonExemptEncryption is false; the app implements no encryption.
 
 Minimum system: macOS 14. The source code and the privacy policy are public.
 

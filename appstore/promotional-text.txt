@@ -1,1 +1,1 @@
-Version 1.5 adds find and replace, Return that carries your lists, quotes and tables on, and every Markdown file extension now opens in md.
+Version 1.6 adds a Format menu, Quick Look previews of your Markdown in the Finder, and EPUBs that carry their author, language, series and cover.

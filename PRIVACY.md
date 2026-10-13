@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Effective date:** 29 June 2026
+**Effective date:** 13 October 2026
 **Applies to:** md for macOS — the native Mac Markdown editor published by
 nettrash. This policy is versioned alongside the app's source code; the
 most recent commit on `main` is authoritative.

@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The build number (`CFBundleVersion`) is auto-incremented on every build by
 a scheme post-action (`agvtool bump`) and is not tracked here.
 
-## [1.6] — 2026-10-10
+## [1.6] — 2026-10-13
 
 ### Added
 
@@ -56,6 +56,16 @@ a scheme post-action (`agvtool bump`) and is not tracked here.
   width. A pin test fails if a future engine update brings the gate back,
   and a render test draws a 120-participant diagram past the old limit.
   (#10)
+- **A quote, ampersand or angle bracket followed by a combining mark was
+  not escaped.** Swift compares strings by character, and a `"`, `&`, `<`
+  or `>` followed by a combining mark (an accent written as its own code
+  point, U+0301 say) is a single character that is none of them, so
+  the HTML escape passed it through untouched — in the preview, the
+  printout, the PDF, the HTML and EPUB exports and Quick Look. A `"` left
+  that way could end an HTML attribute early, and the text after it was
+  read as markup. Escaping now goes one Unicode scalar at a time
+  (`ScalarText.escapingMarkup`), in the renderer and in the EPUB package
+  alike. 1.5 had the same flaw. (#18)
 
 ## [1.5] — 2026-09-23
 

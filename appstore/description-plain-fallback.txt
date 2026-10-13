@@ -2,25 +2,26 @@ md is a Markdown editor and live previewer built for the Mac. Write plain Markdo
 
 WRITE AND SEE
 - Edit, Split and Preview layouts (Command-1, 2 and 3). In Split, the two panes scroll as one.
-- Zen mode (Shift-Command-Return): full screen, your text in one centred column and nothing else - with a switch between writing and reading.
+- Zen mode (Shift-Command-Return): full screen, your text in one centred column, for writing or for reading.
 - The preview is the printed page: one renderer draws the preview, the printout and the PDF.
-- Headings, lists, task lists, tables, quotes, code, links and images - plus footnotes, and metadata front matter (YAML or TOML) recognised and kept out of the page.
+- Headings, lists, task lists, tables, quotes, code, links and images - plus footnotes, and front matter (YAML or TOML) kept out of the page.
 - LaTeX math and mhchem chemistry, Mermaid graphs, Graphviz and PlantUML diagrams - all drawn on your Mac by engines built into the app, and charts from a plot block.
-- Code fenced with a language is highlighted in a quiet palette that matches the page.
-- Paste a table straight from a spreadsheet into a csv or tsv block and md draws it - the first row the header, number columns lined up on the right.
-- The Go menu lists every heading and jumps both panes to it, and lists your private notes - an HTML comment on its own line whose text begins with note - which never appear in the preview, the PDF or the printout.
+- Fenced code is highlighted in a quiet palette.
+- Paste a table from a spreadsheet into a csv or tsv block and md draws it, numbers lined up on the right.
+- The Go menu jumps to any heading, and lists your private notes - an HTML comment on its own line whose text begins with note - which never appear in the preview, the PDF or the printout.
 - A live word and character count sits under every page.
 
-FIND AND TYPE
+FIND, FORMAT AND TYPE
 - A find bar over your source (Command-F, Option-Command-F for Replace), with Replace All as a single undo.
-- Return continues lists, quotes and tables, and the first letter of each line and sentence is capitalized as you type. Both are switches in the Edit menu's Typing submenu.
+- A Format menu: bold, italic, code, strikethrough, links, headings, lists, task lists, quotes and indents, each on a shortcut and each a toggle.
+- Return continues lists, quotes and tables, and the first letter of each line and sentence is capitalized as you type. Both are switches under Edit, Typing.
 
 PRINT AND EXPORT
-- Print or export real A4 pages - or A5, US Letter, US Legal, or a paperback trim size for a book bound for print. Breaks fall between lines, and \newpage starts a fresh page wherever you decide.
+- Print or export real A4 pages - or A5, US Letter, US Legal, or a paperback trim size. Breaks fall between lines, and \newpage starts a fresh page wherever you decide.
 - Export as HTML: one self-contained file that opens anywhere, diagrams as drawings and formulas as real, selectable text.
 - Export as LaTeX: a .tex file where your mathematics stays mathematics.
-- Export a diagram or a plot as a standalone .svg vector, or the whole document - or a single one - as a standard EPUB 3.
-- Share the rendered PDF, or open and export TextBundle and TextPack, the Markdown-with-images container.
+- Export a diagram or a plot as a standalone .svg vector, or the document as a standard EPUB 3, with its author, language, series and cover taken from the front matter.
+- Share the rendered PDF, or open and export TextBundle and TextPack.
 
 WRITER MODE: BOOKS
 - A book is simply a folder: its subfolders are chapters, its Markdown files are articles, ordered by name.
@@ -30,12 +31,12 @@ WRITER MODE: BOOKS
 
 A REAL MAC APP
 - Document-based: open, save, autosave, versions, rename, duplicate and move come from macOS itself. Your files stay ordinary text - .md, .markdown and every other Markdown spelling, or .txt - in the encoding they arrived in; md also opens PlantUML, Graphviz, TextBundle and TextPack files.
-- Native menus, keyboard shortcuts and full screen throughout - no toolbar clutter.
+- Quick Look: press Space on a Markdown file in the Finder to see it rendered, without opening it.
 - Built-in examples, including a small sample book, show everything the app can do.
 
 PRIVATE BY DESIGN
 - No accounts, no sign-in, no analytics, no tracking, no ads.
 - Your documents stay where you put them: on your Mac, or in your own iCloud Drive.
-- Everything is rendered on your Mac. The only thing md fetches from the network is an image your own document points at by URL.
+- Everything is rendered on your Mac. md fetches only what you name by URL: an image in your document, or the cover of an EPUB you export.
 
 Written in Swift and SwiftUI. The only outside code is the open-source engines - KaTeX, mhchem, Mermaid, Graphviz, PlantUML and highlight.js - bundled in and run on your Mac. The source is public.
