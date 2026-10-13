@@ -13,7 +13,7 @@ WRITE AND SEE
 
 FIND, FORMAT AND TYPE
 - A find bar over your source (Command-F, Option-Command-F for Replace), with Replace All as a single undo.
-- A Format menu: bold, italic, code, strikethrough, links, headings, lists, task lists, quotes and indents, each on a shortcut and each a toggle.
+- A Format menu: bold, italic, code, strikethrough, links, headings, lists, task lists, quotes and indents, each on a shortcut.
 - Return continues lists, quotes and tables, and the first letter of each line and sentence is capitalized as you type. Both are switches under Edit, Typing.
 
 PRINT AND EXPORT
