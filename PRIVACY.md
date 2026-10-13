@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Effective date:** 29 June 2026
+**Effective date:** 13 October 2026
 **Applies to:** md for macOS — the native Mac Markdown editor published by
 nettrash. This policy is versioned alongside the app's source code; the
 most recent commit on `main` is authoritative.
@@ -33,9 +33,10 @@ Apple's privacy terms, not ours.
 
 The app stores a few small settings on your Mac, through the standard
 system preferences and window-restoration stores: your last-used
-Edit / Split / Preview layout, the two Edit ▸ Typing switches (whether
-Return continues lists and tables, and whether sentences are
-capitalized), whether a book opens its articles in
+Edit / Split / Preview layout, your PDF page size, the three Edit ▸ Typing
+switches (whether Return continues lists and tables, whether sentences are
+capitalized, and whether typing `*`, `_`, a backtick or `$` wraps a
+selection), whether a book opens its articles in
 separate windows and — if you use writer mode — a security-scoped bookmark
 to the book folder you chose, plus which article in it you had open last,
 so the book reopens where you left it. A security-scoped bookmark is
