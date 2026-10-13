@@ -48,6 +48,7 @@
 		D0000000000000000000FF04 /* PreviewRetryPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000000000000000000FF03 /* PreviewRetryPolicyTests.swift */; };
 		D0000000000000000000FF06 /* FindReplaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000000000000000000FF05 /* FindReplaceTests.swift */; };
 		D0000000000000000000FF08 /* LaunchDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000000000000000000FF07 /* LaunchDiagnostics.swift */; };
+		D0000000000000000000E304 /* PlantUMLLimitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0000000000000000000E303 /* PlantUMLLimitTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -106,6 +107,7 @@
 		D0000000000000000000FF03 /* PreviewRetryPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewRetryPolicyTests.swift; sourceTree = "<group>"; };
 		D0000000000000000000FF05 /* FindReplaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FindReplaceTests.swift; sourceTree = "<group>"; };
 		D0000000000000000000FF07 /* LaunchDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchDiagnostics.swift; sourceTree = "<group>"; };
+		D0000000000000000000E303 /* PlantUMLLimitTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlantUMLLimitTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -205,6 +207,7 @@
 				D0000000000000000000F401 /* TestData */,
 				D0000000000000000000FB05 /* PlotVectors */,
 				D0000000000000000000FD05 /* TypingVectors */,
+				D0000000000000000000E303 /* PlantUMLLimitTests.swift */,
 			);
 			path = mdTests;
 			sourceTree = "<group>";
@@ -355,6 +358,7 @@
 				D0000000000000000000FF04 /* PreviewRetryPolicyTests.swift in Sources */,
 				D0000000000000000000FA04 /* ViewModeTests.swift in Sources */,
 				D0000000000000000000FC04 /* FileTypeTests.swift in Sources */,
+				D0000000000000000000E304 /* PlantUMLLimitTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -519,7 +523,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.5;
+				MARKETING_VERSION = 1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = me.nettrash.md;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -552,7 +556,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.5;
+				MARKETING_VERSION = 1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = me.nettrash.md;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -576,7 +580,7 @@
 					"@loader_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.5;
+				MARKETING_VERSION = 1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = me.nettrash.mdTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -600,7 +604,7 @@
 					"@loader_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.5;
+				MARKETING_VERSION = 1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = me.nettrash.mdTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
