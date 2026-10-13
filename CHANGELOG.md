@@ -35,6 +35,15 @@ a scheme post-action (`agvtool bump`) and is not tracked here.
   with text selected now wraps the selection instead of replacing it;
   **Wrap Selection When Typing \* \_ \` $** in Edit ▸ Typing turns that off.
   (#12)
+- **Quick Look.** Space in Finder — or any preview Quick Look draws — shows
+  a Markdown, PlantUML, Graphviz or TextBundle file (`.md` and its other
+  spellings, `.puml`, `.gv`, `.textbundle`, `.textpack`) as md renders it:
+  the app's own renderer, typewriter paper, math and Graphviz, instead of
+  plain text. Mermaid and PlantUML diagrams, the two engines too heavy for a
+  preview's memory, show their source under a caption saying md draws them.
+  The preview reaches no network — every remote load is blocked, so a
+  remote image stays a gap — and the extension carries its own privacy
+  manifest. (#13)
 
 ### Fixed
 

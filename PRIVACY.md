@@ -61,6 +61,11 @@ document you open references an image by remote URL
 and printed — that request goes straight to the host **your own document
 names**, which sees your IP address exactly as it would if you opened the
 link in a browser. It happens only for documents that contain such a link.
+md's Quick Look preview (what Space shows in Finder) makes no network request
+at all: it blocks every remote load, so a remote image in a previewed
+document is simply not shown. Like the app, it carries the network-client
+entitlement only because the system's web renderer will not start inside the
+App Sandbox without it.
 The same goes for an EPUB export whose front matter says
 `cover: https://…`: the export fetches that one image to put it on the
 book, and nothing else. If that host redirects the request, md follows at
