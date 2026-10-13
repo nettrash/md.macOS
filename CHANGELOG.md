@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The build number (`CFBundleVersion`) is auto-incremented on every build by
 a scheme post-action (`agvtool bump`) and is not tracked here.
 
+## [1.6] — 2026-10-13
+
+### Added
+
+- **An EPUB carries its author, language, date, description, series and
+  cover.** File ▸ Export ▸ EPUB… reads them from the document's front
+  matter — `author`, `language`, `date`, `description`, `series` and
+  `series_index`, matched as `title` is — instead of the fixed `en` and
+  nothing else every md EPUB carried. A language that is not a tag stays
+  `en`; a date that is not a real W3C date (`2026-10-10`, `2026-10`,
+  `2026-10-10T09:30Z`) is left out. `cover:` puts an image on the book when
+  md can read it — a file beside the document, an `https:` image or a
+  `data:` image, in PNG, JPEG, GIF or WebP — and is skipped silently
+  otherwise, with no new permission prompt. All five md EPUB writers change
+  together and write the same lines; a book's EPUB and a document without
+  front matter are unchanged. (#11)
+- **A Format menu.** Bold ⌘B, Italic ⌘I, Code ⇧⌘C, Strikethrough ⇧⌘X, Link
+  ⌘K, Heading ▸ 1–6 on ⌥⌘1–6, Bullet List ⇧⌘L, Task List ⇧⌘T, Quote ⌘' and
+  Indent / Outdent ⌘] / ⌘[ — the chords every md app now shares. Quote is ⌘'
+  rather than ⇧⌘Q, which is the Mac's Log Out. Bold, Italic, Code,
+  Strikethrough, the headings, the lists and Quote toggle (⌘B on bold text
+  takes the bold off); Link inserts link syntax, and Indent and Outdent add
+  and remove indentation. Every command is one Undo step, and they all
+  follow one shared specification and vector file
+  (`MarkdownFormatting.swift`, `formatting-vectors.json`), so a selection is
+  rewritten exactly as on iPhone, iPad, Android and Windows — around
+  surrounding blanks, inside `***bold italic***`, across lines. Typing `*`,
+  `_`, a backtick or `$` with text selected now wraps the selection instead
+  of replacing it; **Wrap Selection When Typing \* \_ \` $** in Edit ▸
+  Typing turns that off. (#12)
+- **Quick Look.** Space in Finder — or any preview Quick Look draws — shows
+  a Markdown, PlantUML, Graphviz or TextBundle file (`.md` and its other
+  spellings, `.puml`, `.gv`, `.textbundle`, `.textpack`) as md renders it:
+  the app's own renderer, typewriter paper, math and Graphviz, instead of
+  plain text. Mermaid and PlantUML diagrams, the two engines too heavy for a
+  preview's memory, show their source under a caption saying md draws them.
+  The preview reaches no network — every remote load is blocked, so a
+  remote image stays a gap — and the extension carries its own privacy
+  manifest. (#13)
+
+### Fixed
+
+- **Large PlantUML diagrams render.** A diagram wider or taller than 4096
+  pixels — a sequence diagram with a hundred participants, say — used to
+  stop at "Diagram too large for browser rendering". The bundled engine's
+  size gate is raised exactly as md for VS Code raised it, so the two
+  copies of `plantuml.js` are byte-identical again; the preview and the
+  exports keep the SVG, and an EPUB snapshot is still capped at the page's
+  width. A pin test fails if a future engine update brings the gate back,
+  and a render test draws a 120-participant diagram past the old limit.
+  (#10)
+- **A quote, ampersand or angle bracket followed by a combining mark was
+  not escaped.** Swift compares strings by character, and a `"`, `&`, `<`
+  or `>` followed by a combining mark (an accent written as its own code
+  point, U+0301 say) is a single character that is none of them, so
+  the HTML escape passed it through untouched — in the preview, the
+  printout, the PDF, the HTML and EPUB exports and Quick Look. A `"` left
+  that way could end an HTML attribute early, and the text after it was
+  read as markup. Escaping now goes one Unicode scalar at a time
+  (`ScalarText.escapingMarkup`), in the renderer and in the EPUB package
+  alike. 1.5 had the same flaw. (#18)
+
 ## [1.5] — 2026-09-23
 
 ### Added

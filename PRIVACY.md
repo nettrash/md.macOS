@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Effective date:** 29 June 2026
+**Effective date:** 13 October 2026
 **Applies to:** md for macOS — the native Mac Markdown editor published by
 nettrash. This policy is versioned alongside the app's source code; the
 most recent commit on `main` is authoritative.
@@ -20,7 +20,8 @@ If that already answers your question, you don't need to read the rest.
 telemetry. It contacts no servers of ours — there are none. The one time
 the app touches the network at all is when a document you opened points at
 an image by remote URL, and the renderer fetches that image so it can be
-shown and printed (see **Permissions** below).
+shown and printed — or, when you export an EPUB, its front matter names its
+cover by an `https:` URL (see **Permissions** below).
 
 ## Your documents
 
@@ -32,9 +33,10 @@ Apple's privacy terms, not ours.
 
 The app stores a few small settings on your Mac, through the standard
 system preferences and window-restoration stores: your last-used
-Edit / Split / Preview layout, the two Edit ▸ Typing switches (whether
-Return continues lists and tables, and whether sentences are
-capitalized), whether a book opens its articles in
+Edit / Split / Preview layout, your PDF page size, the three Edit ▸ Typing
+switches (whether Return continues lists and tables, whether sentences are
+capitalized, and whether typing `*`, `_`, a backtick or `$` wraps a
+selection), whether a book opens its articles in
 separate windows and — if you use writer mode — a security-scoped bookmark
 to the book folder you chose, plus which article in it you had open last,
 so the book reopens where you left it. A security-scoped bookmark is
@@ -60,6 +62,16 @@ document you open references an image by remote URL
 and printed — that request goes straight to the host **your own document
 names**, which sees your IP address exactly as it would if you opened the
 link in a browser. It happens only for documents that contain such a link.
+md's Quick Look preview (what Space shows in Finder) makes no network request
+at all: it blocks every remote load, so a remote image in a previewed
+document is simply not shown. Like the app, it carries the network-client
+entitlement only because the system's web renderer will not start inside the
+App Sandbox without it.
+The same goes for an EPUB export whose front matter says
+`cover: https://…`: the export fetches that one image to put it on the
+book, and nothing else. If that host redirects the request, md follows at
+most five redirects, and only to `https` addresses; each host along the
+way sees your IP address in the same way.
 
 Everything else is built on your Mac: the Markdown renderer, and the math
 and diagram engines (KaTeX, Mermaid, Graphviz, PlantUML) are bundled inside

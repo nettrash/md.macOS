@@ -100,6 +100,12 @@ struct MarkdownEditor: NSViewRepresentable {
         guard let textView = scrollView.documentView as? SmartTextView else { return scrollView }
 
         textView.allowsUndo = true
+        // The typed wrap (1.6): `*`, `_`, a backtick or `$` typed over a
+        // selection wraps it, asked before SmartTyping sees the keystroke.
+        textView.interceptsInsertion = { [weak textView] typed in
+            guard let textView else { return false }
+            return textView.wrapTypedIfEnabled(typed, defaults: textView.defaults)
+        }
         textView.isRichText = false
         textView.importsGraphics = false
         textView.usesFontPanel = false

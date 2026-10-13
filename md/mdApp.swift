@@ -353,6 +353,7 @@ struct DocumentCommands: Commands {
     /// every window, document or book.
     @AppStorage(TypingSettings.continueListsKey) private var continueLists = true
     @AppStorage(TypingSettings.capitalizeSentencesKey) private var capitalizeSentences = true
+    @AppStorage(FormattingSettings.wrapSelectionKey) private var wrapSelection = true
     /// Opening scenes is an app-level action the environment provides even
     /// inside menu commands — how the book commands reach their window.
     @Environment(\.openWindow) private var openWindow
@@ -452,6 +453,14 @@ struct DocumentCommands: Commands {
     /// showing only the preview. `viewMode` is nil when the frontmost window
     /// is not one of md's editing surfaces, and then there is nothing to
     /// nudge.
+    @ViewBuilder
+    private func formatRows(_ rows: [FormatMenu.Row]) -> some View {
+        ForEach(rows, id: \.title) { row in
+            Button(row.title) { FormatMenu.perform(row.op) }
+                .keyboardShortcut(row.key, modifiers: row.modifiers)
+        }
+    }
+
     private func find(_ action: NSTextFinder.Action) {
         Self.performFinderAction(action, showEditor: viewMode?.showEditor)
     }
@@ -572,7 +581,24 @@ struct DocumentCommands: Commands {
             Menu("Typing") {
                 Toggle("Continue Lists and Tables", isOn: $continueLists)
                 Toggle("Capitalize Sentences", isOn: $capitalizeSentences)
+                Toggle("Wrap Selection When Typing * _ ` $", isOn: $wrapSelection)
             }
+        }
+
+        // Format — the formatting commands (1.6), on the frontmost window's
+        // editor. Menu commands, like Go's: the menu bar's key equivalents
+        // win even while the text view has focus. Never disabled, for the
+        // reason the Find rows are not: whether there is an editor depends on
+        // the first responder, which changes without SwiftUI rebuilding the
+        // menu; with none, a command does nothing (`FormatMenu.perform`).
+        CommandMenu("Format") {
+            formatRows(FormatMenu.inline)
+            Divider()
+            Menu("Heading") { formatRows(FormatMenu.headings) }
+            Divider()
+            formatRows(FormatMenu.blocks)
+            Divider()
+            formatRows(FormatMenu.indentation)
         }
 
         // The frontmost window's Edit / Split / Preview, with the
@@ -717,7 +743,8 @@ struct DocumentCommands: Commands {
                 Button("EPUB…") {
                     if let document {
                         Task { await DocumentExport.exportDocumentEPUB(source: document.text,
-                                                                       fileName: document.title) }
+                                                                       fileName: document.title,
+                                                                       fileURL: document.fileURL) }
                     }
                 }
                 .disabled(document == nil)

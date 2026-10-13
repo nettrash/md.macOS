@@ -6,11 +6,11 @@ repo's `play/` folder. One file per field, plain text, paste as-is.
 
 | File | App Store Connect field | Limit | Current |
 | --- | --- | --- | --- |
-| `promotional-text.txt` | Promotional Text | 170 | 139 |
-| `description.txt` | Description | 4000 | 3901 |
+| `promotional-text.txt` | Promotional Text | 170 | 146 |
+| `description.txt` | Description | 4000 | 3882 |
 | `keywords.txt` | Keywords | 100 | 99 |
-| `whats-new.txt` | What's New in This Version | 4000 | 3454 |
-| `review-notes.txt` | App Review Information ▸ Notes | 4000 | 3980 |
+| `whats-new.txt` | What's New in This Version | 4000 | 2451 |
+| `review-notes.txt` | App Review Information ▸ Notes | 4000 | 3984 |
 
 Promotional Text can be changed at any time without submitting a new build;
 the Description and What's New ship with a version.
@@ -44,7 +44,8 @@ listing must describe *this* version, not the roadmap.
   Drive) without implying endorsement.
 - Privacy claims match the code *and* `PRIVACY.md` — the policy the
   listing links to. Both say the same thing: nothing is collected, and the
-  only network use is fetching an image a document itself points at.
+  only network use is fetching what a document itself names by URL — an
+  image it shows, or (1.6) the `https:` cover of an EPUB being exported.
   The Privacy Nutrition Label answer that matches this build is
   **Data Not Collected**, with no tracking.
 
@@ -80,11 +81,11 @@ not downloaded code (2.5.2). It also states the Privacy Nutrition Label
 answer that matches the build — Data Not Collected.
 
 If App Review asks for a screen recording again, the walkthrough in §2 is
-the script: it exercises the app, and 1.5's own additions, in about three minutes.
+the script: it exercises the app, and 1.6's own additions, in about three minutes.
 
 ## If 1.1 never shipped on the Mac App Store
 
-`whats-new.txt` covers 1.5 only. Should the store still be on 1.0, add the
+`whats-new.txt` covers 1.6 only. Should the store still be on 1.0, add the
 1.1 headline as a first bullet:
 
     • Math, Mermaid and PlantUML now render in the preview, the printout
@@ -94,7 +95,8 @@ the script: it exercises the app, and 1.5's own additions, in about three minute
 
 `screenshots/mac/` — eight 2880 × 1800 shots (the Mac App Store's largest
 16:10 size), numbered in upload order: Welcome, typing, Diagrams, Find and
-Replace, Plots, Math, the book window, Code. Taken for 1.5 in light mode, each
+Replace, Plots, Math, the book window, Code. Taken for 1.5 (still accurate
+for 1.6, whose additions are a menu, a Finder preview and EPUB metadata) in light mode, each
 window captured on its own by window number (`screencapture -l`), never the
 screen, and flattened onto the page colour — App Store Connect refuses an
 alpha channel, and a window capture has transparent corners.
